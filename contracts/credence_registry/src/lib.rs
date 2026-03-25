@@ -18,9 +18,9 @@
 //! - validates addresses before registration
 //! - emits events for audit trail
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 pub mod idempotency;
 /// Represents a registry entry mapping an identity to their bond contract
 #[contracttype]
