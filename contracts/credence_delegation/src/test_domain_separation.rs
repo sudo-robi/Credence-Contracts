@@ -258,7 +258,14 @@ fn cross_contract_replay_rejected() {
 
     // Use a *different* (fake) contract address in the payload
     let fake_contract = Address::generate(&e);
-    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &fake_contract, 0);
+    let payload = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &fake_contract,
+        0,
+    );
 
     client.execute_delegated_delegate(
         &owner,

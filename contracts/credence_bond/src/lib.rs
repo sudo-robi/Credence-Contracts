@@ -124,6 +124,7 @@ pub enum DataKey {
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
     BondToken,
+    GraceWindow, // FIX 1: added for configurable post-expiry grace window
 }
 
 #[contract]
@@ -464,6 +465,8 @@ impl CredenceBond {
     ///
     /// Enforces the full permit-like security model:
     /// - `deadline`: must be >= current ledger timestamp (prevents stale replay).
+    ///   A configurable grace window (set via `set_grace_window`) extends the
+    ///   effective deadline by that many seconds.
     /// - `contract_id`: must match this contract's address (domain separation).
     /// - `nonce`: must match attester's current nonce, then increments (replay prevention).
     pub fn add_attestation(
@@ -475,7 +478,9 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) -> Attestation {
-        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
+        // FIX 2: pass grace window into deadline validation
+        let grace = Self::get_grace_window(e.clone());
+        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
         attester.require_auth();
         require_verifier(&e, &attester);
 
@@ -529,7 +534,7 @@ impl CredenceBond {
 
     /// Revoke an attestation (only the original attester).
     ///
-    /// Same permit-like security model: deadline, domain, and nonce are all validated.
+    /// Same permit-like security model: deadline (+ grace), domain, and nonce are all validated.
     pub fn revoke_attestation(
         e: Env,
         attester: Address,
@@ -538,7 +543,9 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) {
-        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
+        // FIX 2: pass grace window into deadline validation
+        let grace = Self::get_grace_window(e.clone());
+        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
         pausable::require_not_paused(&e);
         attester.require_auth();
         let key = DataKey::Attestation(attestation_id);
@@ -587,6 +594,28 @@ impl CredenceBond {
     pub fn get_nonce(e: Env, identity: Address) -> u64 {
         nonce::get_nonce(&e, &identity)
     }
+
+    // ── Grace window ──────────────────────────────────────────────────────────
+
+    /// Set the post-deadline grace window (in seconds). Only admin can call.
+    /// A value of 0 restores strict enforcement (default behaviour).
+    pub fn set_grace_window(e: Env, admin: Address, grace_seconds: u64) {
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::GraceWindow, &grace_seconds);
+    }
+
+    /// Return the currently configured grace window in seconds (0 = strict mode).
+    pub fn get_grace_window(e: Env) -> u64 {
+        e.storage()
+            .instance()
+            .get(&DataKey::GraceWindow)
+            .unwrap_or(0u64)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
         Self::require_admin_internal(&e, &admin);
@@ -774,15 +803,6 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
         governance_approval::initialize_governance(&e, governors, quorum_bps, min_governors);
     }
-
-    /// Top up the bond with additional amount (checks for overflow)
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
-        let mut bond = e
-            .storage()
-            .instance()
-            .get::<_, IdentityBond>(&key)
-            .unwrap_or_else(|| panic!("no bond"));
 
     pub fn governance_vote(e: Env, voter: Address, proposal_id: u64, approve: bool) {
         pausable::require_not_paused(&e);
@@ -1081,7 +1101,7 @@ impl CredenceBond {
             active: false,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period: bond.notice_period,
+            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1133,7 +1153,7 @@ impl CredenceBond {
             active: bond.active,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period: bond.notice_period,
+            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1404,5 +1424,7 @@ mod test_verifier;
 mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
+#[cfg(test)]
+mod test_grace_window; // new test module from your commit
 #[cfg(test)]
 mod token_integration_test;
