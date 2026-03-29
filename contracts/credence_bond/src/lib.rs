@@ -14,6 +14,7 @@ mod events;
 pub mod evidence;
 mod fees;
 pub mod governance_approval;
+mod leverage;
 #[allow(dead_code)]
 mod math;
 mod nonce;
@@ -1079,6 +1080,13 @@ impl CredenceBond {
     pub fn set_platinum_threshold(e: Env, admin: Address, value: i128) {
         parameters::set_platinum_threshold(&e, &admin, value)
     }
+    pub fn get_max_leverage(e: Env) -> u32 {
+        parameters::get_max_leverage(&e)
+    }
+    pub fn set_max_leverage(e: Env, admin: Address, value: u32) {
+        admin.require_auth();
+        parameters::set_max_leverage(&e, &admin, value)
+    }
 
     pub fn withdraw_bond_full(e: Env, identity: Address) -> i128 {
         identity.require_auth();
@@ -1412,6 +1420,8 @@ mod test_helpers;
 mod test_increase_bond;
 #[cfg(test)]
 mod test_math;
+#[cfg(test)]
+mod test_max_leverage;
 #[cfg(test)]
 mod test_parameters;
 #[cfg(test)]
