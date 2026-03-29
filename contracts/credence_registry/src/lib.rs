@@ -133,7 +133,8 @@ impl CredenceRegistry {
 
         // Validate that bond_contract is not a zero address
         // Check for zero address (invalid contract address)
-        if bond_contract.clone().is_zero(&e) {
+        let zero_addr = Address::from_array(&e, [0u8; 32]);
+        if bond_contract == zero_addr {
             panic_with_error!(&e, ContractError::InvalidContractAddress);
         }
         
