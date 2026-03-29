@@ -160,6 +160,11 @@ pub enum ContractError {
     /// Contracts: bond
     InvalidPenaltyBps = 211,
 
+    /// Resulting leverage exceeds the configured maximum.
+    /// Replaces: panic!("leverage exceeds maximum")
+    /// Contracts: bond
+    LeverageExceeded = 212,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -313,7 +318,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNonce
             | ContractError::NegativeStake
             | ContractError::EarlyExitConfigNotSet
-            | ContractError::InvalidPenaltyBps => ErrorCategory::Bond,
+            | ContractError::InvalidPenaltyBps
+            | ContractError::LeverageExceeded => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -373,6 +379,7 @@ impl ErrorExt for ContractError {
                 "Early-exit configuration has not been set for this bond"
             }
             ContractError::InvalidPenaltyBps => "Penalty bps must be in range 0-10000",
+            ContractError::LeverageExceeded => "Resulting leverage exceeds the configured maximum",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",

@@ -86,6 +86,14 @@ pub const MAX_PLATINUM_THRESHOLD: i128 = 1_000_000_000_000_000;
 /// Default platinum tier threshold (100000 tokens)
 pub const DEFAULT_PLATINUM_THRESHOLD: i128 = 100_000_000_000;
 
+/// Minimum allowed value for the max-leverage multiplier (1× = position ≤ 1 × MIN_BOND_AMOUNT).
+pub const MIN_MAX_LEVERAGE: u32 = 1;
+/// Maximum allowed value for the max-leverage multiplier (100 million× matches the hard
+/// MAX_BOND_AMOUNT / MIN_BOND_AMOUNT ceiling).
+pub const MAX_MAX_LEVERAGE: u32 = 100_000_000;
+/// Default max-leverage multiplier (100 000× — aligns with the platinum-tier bond threshold).
+pub const DEFAULT_MAX_LEVERAGE: u32 = 100_000;
+
 // ============================================================================
 // Storage Keys
 // ============================================================================
@@ -101,6 +109,7 @@ pub enum ParameterKey {
     SilverThreshold,
     GoldThreshold,
     PlatinumThreshold,
+    MaxLeverage,
 }
 
 // ============================================================================
@@ -482,6 +491,52 @@ pub fn set_platinum_threshold(e: &Env, admin: &Address, value: i128) {
         .set(&ParameterKey::PlatinumThreshold, &value);
 
     emit_parameter_changed(e, "platinum_threshold", old_value, value, admin);
+}
+
+/// Get the current max-leverage multiplier.
+///
+/// # Returns
+/// Max leverage (u32) as an integer multiplier. Returns `DEFAULT_MAX_LEVERAGE` if not set.
+#[must_use]
+pub fn get_max_leverage(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MaxLeverage)
+        .unwrap_or(DEFAULT_MAX_LEVERAGE)
+}
+
+/// Set the max-leverage multiplier. Governance-only.
+///
+/// Leverage is defined as `bond_amount / MIN_BOND_AMOUNT`.  A bond is rejected when
+/// `bond_amount / MIN_BOND_AMOUNT > max_leverage`.
+///
+/// # Arguments
+/// * `e` - Soroban environment
+/// * `admin` - Governance address (must be contract admin)
+/// * `value` - New max-leverage multiplier
+///
+/// # Bounds
+/// Must be between MIN_MAX_LEVERAGE and MAX_MAX_LEVERAGE (1–100 000 000)
+///
+/// # Panics
+/// - "not admin" if caller is not the contract admin
+/// - "max_leverage out of bounds" if value < MIN_MAX_LEVERAGE or value > MAX_MAX_LEVERAGE
+///
+/// # Events
+/// Emits `parameter_changed` event with old and new values
+pub fn set_max_leverage(e: &Env, admin: &Address, value: u32) {
+    validate_admin(e, admin);
+
+    if !(MIN_MAX_LEVERAGE..=MAX_MAX_LEVERAGE).contains(&value) {
+        panic!("max_leverage out of bounds");
+    }
+
+    let old_value = get_max_leverage(e);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::MaxLeverage, &value);
+
+    emit_parameter_changed(e, "max_leverage", old_value as i128, value as i128, admin);
 }
 
 // ============================================================================
