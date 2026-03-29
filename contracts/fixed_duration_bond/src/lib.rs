@@ -17,24 +17,9 @@
 mod errors;
 mod types;
 
+use credence_math::{add_i128, split_bps};
 use errors::*;
 use types::{DataKey, FeeConfig, FixedBond};
-
-// Checked basis-point helpers used only inside this module.
-#[inline]
-fn checked_mul_i128(a: i128, b: i128, msg: &'static str) -> i128 {
-    a.checked_mul(b).unwrap_or_else(|| panic!("{msg}"))
-}
-
-#[inline]
-fn checked_add_i128(a: i128, b: i128, msg: &'static str) -> i128 {
-    a.checked_add(b).unwrap_or_else(|| panic!("{msg}"))
-}
-
-#[inline]
-fn checked_sub_i128(a: i128, b: i128, msg: &'static str) -> i128 {
-    a.checked_sub(b).unwrap_or_else(|| panic!("{msg}"))
-}
 
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Symbol};
 
@@ -77,9 +62,13 @@ fn get_token(e: &Env) -> Address {
 ///   mathematically non-negative, so any future change to call sites cannot
 ///   silently wrap.
 fn apply_bps(amount: i128, bps: u32) -> (i128, i128) {
-    let fee = checked_mul_i128(amount, bps as i128, ERR_FEE_MUL_OVERFLOW) / 10_000_i128;
-    let net = checked_sub_i128(amount, fee, "fee net underflow");
-    (fee, net)
+    split_bps(
+        amount,
+        bps,
+        ERR_FEE_MUL_OVERFLOW,
+        "fee bps division overflow",
+        "fee net underflow",
+    )
 }
 
 // ─── Contract ──────────────────────────────────────────────────────────────

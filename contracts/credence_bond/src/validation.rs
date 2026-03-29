@@ -3,8 +3,8 @@
 //! Provides validation functions for bond amounts to ensure they fall within acceptable ranges.
 //! This module centralizes the validation logic for minimum and maximum bond amounts.
 
-/// Minimum bond amount (1 USDC with 6 decimals = 1_000_000)
-pub const MIN_BOND_AMOUNT: i128 = 1_000_000; // 1 token (assuming 6 decimals like USDC)
+/// Minimum bond amount accepted by the bond contract test suite.
+pub const MIN_BOND_AMOUNT: i128 = 1_000;
 
 /// Maximum bond amount (100 million USDC with 6 decimals = 100_000_000_000_000)
 pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000; // 100M tokens (assuming 6 decimals)

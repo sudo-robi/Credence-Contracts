@@ -197,7 +197,7 @@ impl CredenceDelegation {
     /// Relayer-friendly variant of `revoke_attestation`.
     ///
     /// Payload domain must be `DomainTag::RevokeAttestation`.
-    pub fn execute_delegated_revoke_attestation(
+    pub fn execute_delegated_revoke_attest(
         e: Env,
         attester: Address,
         subject: Address,

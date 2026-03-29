@@ -1,7 +1,7 @@
 //! Comprehensive tests for the fixed_duration_bond contract.
 
 use crate::test_helpers::*;
-use crate::{FixedDurationBond, FixedDurationBondClient, MAX_FEE_BPS};
+use crate::{apply_bps, FixedDurationBond, FixedDurationBondClient, MAX_FEE_BPS};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env};
@@ -516,6 +516,33 @@ fn test_arithmetic_one_bps_fee_large_deposit() {
     let bond = client.create_bond(&owner, &large, &ONE_DAY);
     let expected_fee = large / 10_000;
     assert_eq!(bond.amount, large - expected_fee);
+}
+
+#[test]
+fn test_apply_bps_matches_legacy_formula() {
+    fn legacy_apply_bps(amount: i128, bps: u32) -> (i128, i128) {
+        let fee = amount
+            .checked_mul(bps as i128)
+            .expect("legacy fee multiplication overflow")
+            / 10_000_i128;
+        let net = amount.checked_sub(fee).expect("legacy fee net underflow");
+        (fee, net)
+    }
+
+    let cases = [
+        (0_i128, 0_u32),
+        (10_000, 100),
+        (10_000, 1_000),
+        (123_456_789, 75),
+        (i128::MAX / 20_000, 10_000),
+    ];
+
+    for (amount, bps_value) in cases {
+        assert_eq!(
+            apply_bps(amount, bps_value),
+            legacy_apply_bps(amount, bps_value)
+        );
+    }
 }
 
 /// Multiple bonds accumulate fees safely via checked addition.

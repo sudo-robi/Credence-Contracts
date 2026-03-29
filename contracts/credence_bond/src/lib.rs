@@ -434,7 +434,7 @@ impl CredenceBond {
         }
         let bond = IdentityBond {
             identity: identity.clone(),
-            bonded_amount: amount,
+            bonded_amount: net_amount,
             bond_start,
             bond_duration: duration,
             slashed_amount: 0,
@@ -815,6 +815,12 @@ impl CredenceBond {
         governance_approval::delegate(&e, &governor, &to);
     }
 
+    pub fn propose_slash(e: Env, proposer: Address, amount: i128) -> u64 {
+        pausable::require_not_paused(&e);
+        proposer.require_auth();
+        governance_approval::propose_slash(&e, &proposer, amount)
+    }
+
     pub fn execute_slash_with_governance(
         e: Env,
         proposer: Address,
@@ -946,7 +952,7 @@ impl CredenceBond {
             let old_amount = bond.bonded_amount;
             let new_amount = old_amount
                 .checked_add(amount)
-                .expect("bond increase overflow");
+                .expect("bond increase caused overflow");
             let token_client = TokenClient::new(&e, &token_addr);
             let contract_address = e.current_contract_address();
             token_client.transfer_from(&contract_address, &caller, &contract_address, &amount);
@@ -1117,6 +1123,10 @@ impl CredenceBond {
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
         admin.require_auth();
         Self::acquire_lock(&e);
+        if slash_amount < 0 {
+            Self::release_lock(&e);
+            panic!("slash amount must be non-negative");
+        }
         let stored_admin: Address = e
             .storage()
             .instance()

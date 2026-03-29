@@ -176,7 +176,7 @@ fn cross_domain_replay_delegate_payload_in_revoke_attestation() {
         0,
     );
 
-    client.execute_delegated_revoke_attestation(&attester, &subject, &wrong_payload);
+    client.execute_delegated_revoke_attest(&attester, &subject, &wrong_payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +403,7 @@ fn happy_path_delegated_revoke_attestation() {
         &contract_id,
         0,
     );
-    client.execute_delegated_revoke_attestation(&attester, &subject, &payload);
+    client.execute_delegated_revoke_attest(&attester, &subject, &payload);
 
     assert!(matches!(
         client.get_attestation_status(&attester, &subject),
