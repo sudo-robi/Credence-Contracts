@@ -1,8 +1,9 @@
 //! USDC token integration helpers for Credence Bond.
 //! Centralizes token configuration, allowance checks, and transfer operations.
+//! Now uses safe token operations for consistent error handling.
 
 use crate::DataKey;
-use soroban_sdk::token::TokenClient;
+use crate::safe_token;
 use soroban_sdk::{Address, Env, String, Symbol};
 
 /// Stellar network passphrase label used for USDC mainnet references.
@@ -15,10 +16,6 @@ fn network_key(e: &Env) -> Symbol {
     Symbol::new(e, "usdc_net")
 }
 
-fn token_client(e: &Env) -> TokenClient<'_> {
-    let token = get_token(e);
-    TokenClient::new(e, &token)
-}
 
 /// @notice Sets the token contract used by bond operations.
 /// @dev Requires admin auth and stores token in instance storage.
@@ -66,46 +63,19 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 }
 
 /// @notice Checks if owner has enough allowance for the contract to spend amount.
-/// @dev Uses token allowance(owner, spender) where spender is the bond contract.
+/// @dev Uses safe allowance checking with proper error handling.
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
-    if amount < 0 {
-        panic!("amount must be non-negative");
-    }
-    if amount == 0 {
-        return;
-    }
-    let contract = e.current_contract_address();
-    let allowance = token_client(e).allowance(owner, &contract);
-    if allowance < amount {
-        panic!("insufficient token allowance");
-    }
+    safe_token::safe_require_allowance(e, owner, amount);
 }
 
 /// @notice Transfers tokens from owner into the bond contract.
-/// @dev Requires prior approval for the bond contract as spender.
+/// @dev Uses safe transfer with proper validation and error handling.
 pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
-    if amount < 0 {
-        panic!("amount must be non-negative");
-    }
-    if amount == 0 {
-        return;
-    }
-
-    require_allowance(e, owner, amount);
-    let contract = e.current_contract_address();
-    token_client(e).transfer_from(&contract, owner, &contract, &amount);
+    safe_token::safe_transfer_from(e, owner, amount);
 }
 
 /// @notice Transfers tokens from the bond contract to recipient.
-/// @dev Used for standard withdrawals and penalty/treasury transfers.
+/// @dev Uses safe transfer for standard withdrawals and penalty/treasury transfers.
 pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
-    if amount < 0 {
-        panic!("amount must be non-negative");
-    }
-    if amount == 0 {
-        return;
-    }
-
-    let contract = e.current_contract_address();
-    token_client(e).transfer(&contract, recipient, &amount);
+    safe_token::safe_transfer(e, recipient, amount);
 }

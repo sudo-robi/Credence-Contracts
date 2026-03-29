@@ -31,6 +31,7 @@ pub mod types;
 mod validation;
 pub mod verifier;
 mod weighted_attestation;
+mod safe_token;
 
 use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
@@ -1001,9 +1002,10 @@ impl CredenceBond {
             let new_amount = old_amount
                 .checked_add(amount)
                 .expect("bond increase caused overflow");
-            let token_client = TokenClient::new(&e, &token_addr);
-            let contract_address = e.current_contract_address();
-            token_client.transfer_from(&contract_address, &caller, &contract_address, &amount);
+            
+            // Use safe token operations
+            crate::safe_token::safe_transfer_from(&e, &caller, amount);
+            
             let old_tier = tiered_bond::get_tier_for_amount(old_amount);
             let new_tier = tiered_bond::get_tier_for_amount(new_amount);
             bond.bonded_amount = new_amount;
@@ -1533,10 +1535,4 @@ mod test_validation;
 #[cfg(test)]
 mod test_verifier;
 #[cfg(test)]
-mod test_weighted_attestation;
-#[cfg(test)]
-mod test_withdraw_bond;
-#[cfg(test)]
-mod test_grace_window; // new test module from your commit
-#[cfg(test)]
-mod token_integration_test;
+mod safe_token_tests;

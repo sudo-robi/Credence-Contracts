@@ -12,6 +12,7 @@
 
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 use crate::{events, DataKey};
+use crate::safe_token;
 
 /// Maximum number of claims that can be processed in a single batch
 const MAX_BATCH_CLAIMS: u32 = 50;
@@ -297,17 +298,9 @@ pub fn process_claims(
             .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
     }
 
-    // Transfer tokens to user
+    // Transfer tokens to user using safe token operations
     if total_amount > 0 {
-        let token: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("token not configured");
-        
-        let contract = e.current_contract_address();
-        soroban_sdk::token::TokenClient::new(e, &token)
-            .transfer(&contract, user, &total_amount);
+        safe_token::safe_transfer(e, user, total_amount);
     }
 
     let result = ClaimResult {
