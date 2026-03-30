@@ -1511,6 +1511,8 @@ mod test_helpers;
 #[cfg(test)]
 mod test_increase_bond;
 #[cfg(test)]
+mod test_bps_denominator;
+#[cfg(test)]
 mod test_math;
 #[cfg(test)]
 mod test_max_leverage;
