@@ -65,6 +65,8 @@ pub enum DataKey {
     Approval(u64, Address),
     /// Approval count per proposal (cached for execution check).
     ApprovalCount(u64),
+    /// Minimum liquidity that must remain in the treasury after a withdrawal.
+    MinLiquidity,
 }
 
 #[contract]
@@ -98,6 +100,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
+        e.storage().instance().set(&DataKey::MinLiquidity, &0_i128);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
     }
@@ -376,11 +379,10 @@ impl CredenceTreasury {
             .set(&DataKey::ApprovalCount(proposal_id), &new_count);
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_approved"), proposal_id),
-            approver,
+            (approver,),
         );
     }
 
-    /// Execute a withdrawal proposal. Callable by anyone once approval count >= threshold. Deducts from total and from both source buckets proportionally (by ratio of source/total at execution time) for accounting; for simplicity we deduct from total only and leave source balances as-is for reporting (so we track "received" by source; withdrawals are from the pool). Actually the issue says "track fund sources" — so we need to either (1) deduct from total only and keep source balances as "total ever received per source" (then total = sum of sources minus withdrawals would require a separate "withdrawn" counter), or (2) deduct from total and also deduct from each source proportionally. Simpler: total balance is the only withdrawable amount; balance_by_source is informational (total received per source). So on withdraw we only subtract from TotalBalance. Then balance_by_source no longer sums to total after withdrawals. Alternative: on withdraw we subtract from total and also reduce each source proportionally. That way get_balance_by_source still reflects "available from this source". Let me do proportional deduction so that source tracking stays consistent: when we withdraw, we deduct from TotalBalance and from each BalanceBySource in proportion to their share. So: total T, protocol P, slashed S. Withdraw W. New total = T - W. Ratio: P/T and S/T. Deduct from P: W * P / T, from S: W * S / T. So both get reduced proportionally.
     /// Execute a withdrawal proposal. Callable by anyone once approval count >= threshold.
     ///
     /// # Arguments
@@ -422,14 +424,20 @@ impl CredenceTreasury {
         if total < proposal.amount {
             panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
         }
+
+        // Liquidity guard: Ensure remaining balance doesn't breach the minimum floor.
+        let min_liquidity: i128 = e.storage().instance().get(&DataKey::MinLiquidity).unwrap_or(0);
+        let remaining = total.checked_sub(proposal.amount).expect("withdrawal underflow");
+        if remaining < min_liquidity {
+            panic!("liquidity guard: withdrawal would breach minimum liquidity floor");
+        }
+
         // Slippage guard: revert if the settled amount falls below the caller's threshold.
         if proposal.amount < min_amount_out {
             panic!("slippage: received amount below minimum");
         }
         let actual_amount = proposal.amount;
-        let new_total = total
-            .checked_sub(actual_amount)
-            .expect("withdrawal underflow");
+        let new_total = remaining;
         e.storage()
             .instance()
             .set(&DataKey::TotalBalance, &new_total);
@@ -442,6 +450,24 @@ impl CredenceTreasury {
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
             (proposal.recipient.clone(), min_amount_out, actual_amount),
         );
+    }
+
+    /// Set the minimum liquidity floor. Only admin can call.
+    pub fn set_min_liquidity(e: Env, admin: Address, min_liquidity: i128) {
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+
+        e.storage().instance().set(&DataKey::MinLiquidity, &min_liquidity);
+        e.events().publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
+    }
+
+    /// Get current minimum liquidity floor.
+    pub fn get_min_liquidity(e: Env) -> i128 {
+        e.storage().instance().get(&DataKey::MinLiquidity).unwrap_or(0)
     }
 
     /// Get total treasury balance.

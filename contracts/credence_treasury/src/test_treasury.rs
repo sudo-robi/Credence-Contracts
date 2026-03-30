@@ -24,6 +24,7 @@ fn test_initialize() {
     assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 0);
     assert_eq!(client.get_balance_by_source(&FundSource::SlashedFunds), 0);
     assert_eq!(client.get_threshold(), 0);
+    assert_eq!(client.get_min_liquidity(), 0);
 }
 
 #[test]
@@ -393,8 +394,6 @@ fn test_execute_withdrawal_min_amount_out_below_proposal_succeeds() {
 #[should_panic(expected = "slippage: received amount below minimum")]
 fn test_execute_withdrawal_slippage_reverts_when_below_min() {
     // min_amount_out > proposal.amount → must revert.
-    // Simulates adversarial pool behaviour: proposal was created for 500 but
-    // the caller now requires at least 501 (e.g. price moved unfavourably).
     let (_e, client, id) = setup_ready_proposal(500);
     client.execute_withdrawal(&id, &501);
 }
@@ -405,4 +404,69 @@ fn test_execute_withdrawal_slippage_reverts_adversarial_large_min() {
     // Adversarial: caller sets an unreachably high min_amount_out.
     let (_e, client, id) = setup_ready_proposal(100);
     client.execute_withdrawal(&id, &i128::MAX);
+}
+
+// ── Minimum Liquidity tests (issue #125) ─────────────────────────────────────
+
+#[test]
+fn test_set_and_get_min_liquidity() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    client.set_min_liquidity(&admin, &5000);
+    assert_eq!(client.get_min_liquidity(), 5000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #100)")] // NotAdmin error code
+fn test_set_min_liquidity_non_admin_fails() {
+    let e = Env::default();
+    let (client, _admin) = setup(&e);
+    let other = Address::generate(&e);
+    client.set_min_liquidity(&other, &5000);
+}
+
+#[test]
+fn test_withdrawal_respects_min_liquidity() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    
+    // Deposit 10,000
+    client.receive_fee(&admin, &10_000, &FundSource::ProtocolFee);
+    
+    // Set floor to 6,000
+    client.set_min_liquidity(&admin, &6_000);
+    
+    let s1 = Address::generate(&e);
+    let recipient = Address::generate(&e);
+    client.add_signer(&s1);
+    client.set_threshold(&1);
+    
+    // Propose withdrawing 3,000 (Remaining = 7,000 > 6,000 Floor) -> Succeeds
+    let id1 = client.propose_withdrawal(&s1, &recipient, &3000);
+    client.approve_withdrawal(&s1, &id1);
+    client.execute_withdrawal(&id1, &0);
+    assert_eq!(client.get_balance(), 7000);
+}
+
+#[test]
+#[should_panic(expected = "liquidity guard: withdrawal would breach minimum liquidity floor")]
+fn test_withdrawal_breaching_min_liquidity_reverts() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    
+    // Deposit 10_000
+    client.receive_fee(&admin, &10_000, &FundSource::ProtocolFee);
+    
+    // Set floor to 8,000
+    client.set_min_liquidity(&admin, &8_000);
+    
+    let s1 = Address::generate(&e);
+    let recipient = Address::generate(&e);
+    client.add_signer(&s1);
+    client.set_threshold(&1);
+    
+    // Propose withdrawing 3,000 (Remaining would be 7,000 < 8,000 Floor) -> Reverts
+    let id1 = client.propose_withdrawal(&s1, &recipient, &3000);
+    client.approve_withdrawal(&s1, &id1);
+    client.execute_withdrawal(&id1, &0);
 }
