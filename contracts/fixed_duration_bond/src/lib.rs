@@ -17,7 +17,7 @@
 mod errors;
 mod types;
 
-use credence_math::{add_i128, split_bps};
+use credence_math::{add_i128, mul_i128, split_bps};
 use errors::*;
 use types::{DataKey, FeeConfig, FixedBond, OracleSafety};
 
@@ -203,7 +203,7 @@ impl FixedDurationBond {
             .get(&DataKey::OracleSafety(asset))
             .unwrap_or_else(|| panic!("{}", ERR_ORACLE_SAFETY_NOT_SET));
         validate_oracle_answer(oracle_answer, &safety);
-        checked_mul_i128(amount, oracle_answer, ERR_VALUATION_OVERFLOW)
+        mul_i128(amount, oracle_answer, ERR_VALUATION_OVERFLOW)
     }
 
     // ── Bond lifecycle ─────────────────────────────────────────────────────
@@ -263,7 +263,7 @@ impl FixedDurationBond {
                     .instance()
                     .get(&DataKey::AccruedFees)
                     .unwrap_or(0);
-                let new_fees = checked_add_i128(prev_fees, fee, ERR_FEE_ACCRUE_OVERFLOW);
+                let new_fees = add_i128(prev_fees, fee, ERR_FEE_ACCRUE_OVERFLOW);
                 e.storage().instance().set(&DataKey::AccruedFees, &new_fees);
                 net
             } else {

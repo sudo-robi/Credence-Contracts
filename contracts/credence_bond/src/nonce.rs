@@ -103,3 +103,18 @@ pub fn validate_and_consume(
     require_domain_match(e, expected_contract);
     consume_nonce(e, identity, nonce);
 }
+
+/// Backward-compatible wrapper for call sites that pass an explicit grace value.
+///
+/// Grace is read from storage by `require_not_expired`, so the `_grace` argument
+/// is intentionally ignored.
+pub fn validate_and_consume_with_grace(
+    e: &Env,
+    identity: &Address,
+    expected_contract: &Address,
+    deadline: u64,
+    nonce: u64,
+    _grace: u64,
+) {
+    validate_and_consume(e, identity, expected_contract, deadline, nonce);
+}
