@@ -65,24 +65,6 @@ pub struct ClaimResult {
     pub claim_types: Vec<ClaimType>,
 }
 
-/// Storage keys for claims
-impl DataKey {
-    /// Pending claims for a user: DataKey::PendingClaims(user) -> Vec<PendingClaim>
-    pub const fn pending_claims(user: &Address) -> DataKey {
-        DataKey::PendingClaims(user.clone())
-    }
-    
-    /// Total claimable amount for a user: DataKey::ClaimableAmount(user) -> i128
-    pub const fn claimable_amount(user: &Address) -> DataKey {
-        DataKey::ClaimableAmount(user.clone())
-    }
-    
-    /// Claim history counter: DataKey::ClaimCounter -> u64
-    pub const fn claim_counter() -> DataKey {
-        DataKey::ClaimCounter
-    }
-}
-
 /// Add a new pending claim for a user
 ///
 /// # Arguments
@@ -302,7 +284,7 @@ pub fn process_claims(
         let token: Address = e
             .storage()
             .instance()
-            .get(&DataKey::Token)
+            .get(&DataKey::BondToken)
             .expect("token not configured");
         
         let contract = e.current_contract_address();

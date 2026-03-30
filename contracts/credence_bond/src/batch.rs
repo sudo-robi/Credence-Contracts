@@ -124,8 +124,7 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     let mut bonds: Vec<IdentityBond> = Vec::new(e);
 
     // Step 2: Check for existing bonds (before creating any)
-    for i in 0..params_list.len() {
-        let params = params_list.get(i).unwrap();
+    for _i in 0..params_list.len() {
         let bond_key = DataKey::Bond; // Note: Current implementation uses single bond
 
         // In a multi-identity system, you'd check per-identity:
@@ -161,6 +160,8 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
 
         bonds.push_back(bond);
     }
+
+    crate::same_ledger_liquidation_guard::record_collateral_increase(e);
 
     let result = BatchBondResult {
         created_count: bonds.len(),

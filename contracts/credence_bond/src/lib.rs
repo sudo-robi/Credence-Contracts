@@ -7,6 +7,8 @@ use soroban_sdk::{
 
 pub mod access_control;
 mod batch;
+mod claims;
+mod cooldown;
 pub mod early_exit_penalty;
 mod emergency;
 mod events;
@@ -21,6 +23,7 @@ mod nonce;
 mod parameters;
 pub mod pausable;
 pub mod rolling_bond;
+mod same_ledger_liquidation_guard;
 #[allow(dead_code)]
 mod slash_history;
 #[allow(dead_code)]
@@ -36,10 +39,9 @@ use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
 
-use soroban_sdk::token::TokenClient;
-
 pub use batch::{BatchBondParams, BatchBondResult};
 pub use evidence::{Evidence, EvidenceType};
+pub use types::Attestation;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,20 +64,6 @@ pub struct IdentityBond {
     pub is_rolling: bool,
     pub withdrawal_requested_at: u64,
     pub notice_period_duration: u64,
-}
-
-// Re-export batch types
-pub use batch::{BatchBondParams, BatchBondResult};
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Attestation {
-    pub id: u64,
-    pub attester: Address,
-    pub subject: Address,
-    pub attestation_data: String,
-    pub timestamp: u64,
-    pub revoked: bool,
 }
 
 /// A pending cooldown withdrawal request. Created when a bond holder signals
@@ -126,6 +114,11 @@ pub enum DataKey {
     PauseApprovalCount(u64),
     BondToken,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
+    /// Ledger sequence of the last operation that added bond collateral (create, top_up, increase, batch).
+    LastCollateralIncreaseLedger,
+    PendingClaims(Address),
+    ClaimableAmount(Address),
+    ClaimCounter,
 }
 
 #[contract]
@@ -446,6 +439,7 @@ impl CredenceBond {
         };
         let key = DataKey::Bond;
         e.storage().instance().set(&key, &bond);
+        same_ledger_liquidation_guard::record_collateral_increase(&e);
 
         let old_tier = BondTier::Bronze;
         let new_tier = tiered_bond::get_tier_for_amount(net_amount);
@@ -509,9 +503,9 @@ impl CredenceBond {
             id,
             verifier: attester.clone(),
             identity: subject.clone(),
-            attestation_data: attestation_data.clone(),
             timestamp: e.ledger().timestamp(),
             weight,
+            attestation_data: attestation_data.clone(),
             revoked: false,
         };
         e.storage()
@@ -743,7 +737,7 @@ impl CredenceBond {
             let refund_amount = penalty / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
-                let penalty_id = get_next_penalty_id(&e);
+                let penalty_id = Self::get_next_penalty_id(&e);
                 
                 claims::add_pending_claim(
                     &e,
@@ -974,6 +968,7 @@ impl CredenceBond {
         events::emit_bond_increased(&e, &bond.identity, amount, bond.bonded_amount);
 
         e.storage().instance().set(&key, &bond);
+        same_ledger_liquidation_guard::record_collateral_increase(&e);
         bond
     }
 
@@ -1008,6 +1003,7 @@ impl CredenceBond {
             let new_tier = tiered_bond::get_tier_for_amount(new_amount);
             bond.bonded_amount = new_amount;
             e.storage().instance().set(&key, &bond);
+            same_ledger_liquidation_guard::record_collateral_increase(&e);
             tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
             e.events().publish(
                 (Symbol::new(&e, "bond_increased"), bond.identity.clone()),
@@ -1191,6 +1187,7 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("not admin");
         }
+        same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase(&e);
         let bond_key = DataKey::Bond;
         let bond: IdentityBond = e
             .storage()
@@ -1412,50 +1409,7 @@ impl CredenceBond {
     pub fn cleanup_expired_claims(e: Env, user: Address) -> u32 {
         claims::cleanup_expired_claims(&e, &user)
     }
-}
 
-#[cfg(test)]
-mod test_helpers;
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_reentrancy;
-
-#[cfg(test)]
-mod test_attestation;
-
-#[cfg(test)]
-mod test_batch;
-
-#[cfg(test)]
-mod test_attestation_types;
-
-#[cfg(test)]
-mod test_validation;
-
-#[cfg(test)]
-mod test_governance_approval;
-
-#[cfg(test)]
-mod test_parameters;
-
-#[cfg(test)]
-mod test_fees;
-
-#[cfg(test)]
-mod integration;
-
-#[cfg(test)]
-mod test_increase_bond;
-
-#[cfg(test)]
-mod security;
-
-// Pause mechanism entrypoints
-#[contractimpl]
-impl CredenceBond {
     pub fn is_paused(e: Env) -> bool {
         pausable::is_paused(&e)
     }
@@ -1537,6 +1491,6 @@ mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
 #[cfg(test)]
-mod test_grace_window; // new test module from your commit
+mod test_same_ledger_liquidation_guard;
 #[cfg(test)]
 mod token_integration_test;
