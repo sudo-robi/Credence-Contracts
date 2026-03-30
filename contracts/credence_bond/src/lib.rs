@@ -7,6 +7,8 @@ use soroban_sdk::{
 
 pub mod access_control;
 mod batch;
+mod claims;
+mod cooldown;
 pub mod early_exit_penalty;
 mod emergency;
 mod events;
@@ -36,8 +38,6 @@ use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
 
-use soroban_sdk::token::TokenClient;
-
 pub use batch::{BatchBondParams, BatchBondResult};
 pub use evidence::{Evidence, EvidenceType};
 
@@ -64,17 +64,15 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
-// Re-export batch types
-pub use batch::{BatchBondParams, BatchBondResult};
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Attestation {
     pub id: u64,
-    pub attester: Address,
-    pub subject: Address,
+    pub verifier: Address,
+    pub identity: Address,
     pub attestation_data: String,
     pub timestamp: u64,
+    pub weight: u32,
     pub revoked: bool,
 }
 
@@ -126,6 +124,9 @@ pub enum DataKey {
     PauseApprovalCount(u64),
     BondToken,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
+    PendingClaims(Address),
+    ClaimableAmount(Address),
+    ClaimCounter,
 }
 
 #[contract]
@@ -743,7 +744,7 @@ impl CredenceBond {
             let refund_amount = penalty / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
-                let penalty_id = get_next_penalty_id(&e);
+                let penalty_id = Self::get_next_penalty_id(&e);
 
                 claims::add_pending_claim(
                     &e,
@@ -1410,45 +1411,6 @@ impl CredenceBond {
     }
 }
 
-#[cfg(test)]
-mod test_helpers;
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_reentrancy;
-
-#[cfg(test)]
-mod test_attestation;
-
-#[cfg(test)]
-mod test_batch;
-
-#[cfg(test)]
-mod test_attestation_types;
-
-#[cfg(test)]
-mod test_validation;
-
-#[cfg(test)]
-mod test_governance_approval;
-
-#[cfg(test)]
-mod test_parameters;
-
-#[cfg(test)]
-mod test_fees;
-
-#[cfg(test)]
-mod integration;
-
-#[cfg(test)]
-mod test_increase_bond;
-
-#[cfg(test)]
-mod security;
-
 // Pause mechanism entrypoints
 #[contractimpl]
 impl CredenceBond {
@@ -1485,7 +1447,12 @@ mod security;
 mod test;
 #[cfg(test)]
 mod test_access_control;
-
+#[cfg(test)]
+mod test_attestation;
+#[cfg(test)]
+mod test_attestation_types;
+#[cfg(test)]
+mod test_batch;
 #[cfg(test)]
 mod test_bps_denominator;
 #[cfg(test)]
