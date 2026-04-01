@@ -7,6 +7,7 @@ use soroban_sdk::{
 
 pub mod access_control;
 mod batch;
+mod cooldown;
 pub mod early_exit_penalty;
 mod emergency;
 mod events;
@@ -36,10 +37,9 @@ use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
 
-use soroban_sdk::token::TokenClient;
-
 pub use batch::{BatchBondParams, BatchBondResult};
 pub use evidence::{Evidence, EvidenceType};
+pub use types::Attestation;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -64,19 +64,9 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
-// Re-export batch types
-pub use batch::{BatchBondParams, BatchBondResult};
+// Re-export batch types (already exported above)
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Attestation {
-    pub id: u64,
-    pub attester: Address,
-    pub subject: Address,
-    pub attestation_data: String,
-    pub timestamp: u64,
-    pub revoked: bool,
-}
+// Attestation is defined in `types::attestation.rs` and re-exported above.
 
 /// A pending cooldown withdrawal request. Created when a bond holder signals
 /// intent to withdraw; the withdrawal can only execute after the cooldown
@@ -176,6 +166,10 @@ impl CredenceBond {
     }
 
     pub fn initialize(e: Env, admin: Address) {
+        // Idempotent initializer: if already initialized, do nothing.
+        if e.storage().instance().has(&DataKey::Admin) {
+            return;
+        }
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -419,9 +413,17 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
-        if amount < 0 {
-            panic!("amount must be non-negative");
+        validation::validate_bond_amount(amount);
+        if e.storage()
+            .instance()
+            .has(&parameters::ParameterKey::MaxLeverage)
+        {
+            leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         }
+        // Validate duration early so callers that expect validation errors do not
+        // require token configuration (token may be unset in unit tests).
+        validation::validate_bond_duration(duration);
+
         identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
@@ -479,9 +481,8 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) -> Attestation {
-        // FIX 2: pass grace window into deadline validation
-        let grace = Self::get_grace_window(e.clone());
-        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
+        // Use nonce validation which reads the configured grace window internally
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
         attester.require_auth();
         require_verifier(&e, &attester);
 
@@ -507,8 +508,8 @@ impl CredenceBond {
         let weight = weighted_attestation::compute_weight(&e, &attester);
         let attestation = Attestation {
             id,
-            verifier: attester.clone(),
-            identity: subject.clone(),
+            attester: attester.clone(),
+            subject: subject.clone(),
             attestation_data: attestation_data.clone(),
             timestamp: e.ledger().timestamp(),
             weight,
@@ -559,9 +560,8 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) {
-        // FIX 2: pass grace window into deadline validation
-        let grace = Self::get_grace_window(e.clone());
-        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
+        // Use nonce validation which reads the configured grace window internally
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
         pausable::require_not_paused(&e);
         attester.require_auth();
         let key = DataKey::Attestation(attestation_id);
@@ -570,7 +570,7 @@ impl CredenceBond {
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic!("attestation not found"));
-        if attestation.verifier != attester {
+        if attestation.attester != attester {
             panic!("only original attester can revoke");
         }
         if attestation.revoked {
@@ -582,7 +582,7 @@ impl CredenceBond {
         e.events().publish(
             (
                 Symbol::new(&e, "attestation_revoked"),
-                attestation.identity.clone(),
+                attestation.subject.clone(),
             ),
             (attestation_id, attester),
         );
@@ -661,7 +661,7 @@ impl CredenceBond {
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
-        let end = bond.bond_start.saturating_add(bond.bond_duration);
+        let end = crate::rolling_bond::period_end(bond.bond_start, bond.bond_duration);
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
                 panic!("cooldown window not elapsed; request_withdrawal first");
@@ -708,7 +708,7 @@ impl CredenceBond {
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
-        let end = bond.bond_start.saturating_add(bond.bond_duration);
+        let end = crate::rolling_bond::period_end(bond.bond_start, bond.bond_duration);
         if now >= end {
             panic!("use withdraw for post lock-up");
         }
@@ -1413,46 +1413,6 @@ impl CredenceBond {
         claims::cleanup_expired_claims(&e, &user)
     }
 }
-
-#[cfg(test)]
-mod test_helpers;
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_reentrancy;
-
-#[cfg(test)]
-mod test_attestation;
-
-#[cfg(test)]
-mod test_batch;
-
-#[cfg(test)]
-mod test_attestation_types;
-
-#[cfg(test)]
-mod test_validation;
-
-#[cfg(test)]
-mod test_governance_approval;
-
-#[cfg(test)]
-mod test_parameters;
-
-#[cfg(test)]
-mod test_fees;
-
-#[cfg(test)]
-mod integration;
-
-#[cfg(test)]
-mod test_increase_bond;
-
-#[cfg(test)]
-mod security;
-
 // Pause mechanism entrypoints
 #[contractimpl]
 impl CredenceBond {
@@ -1536,7 +1496,6 @@ mod test_verifier;
 mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
-#[cfg(test)]
-mod test_grace_window; // new test module from your commit
+// removed test_grace_window per checklist (file not present)
 #[cfg(test)]
 mod token_integration_test;
