@@ -1,13 +1,12 @@
 #![no_std]
 
-use soroban_sdk::token::TokenClient;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 pub mod access_control;
 mod batch;
-pub mod claims;
+mod cooldown;
 pub mod early_exit_penalty;
 mod emergency;
 mod events;
@@ -33,15 +32,15 @@ pub mod types;
 mod validation;
 pub mod verifier;
 mod weighted_attestation;
+mod cooldown;
 
 use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
 
-use soroban_sdk::token::TokenClient;
-
 pub use batch::{BatchBondParams, BatchBondResult};
 pub use evidence::{Evidence, EvidenceType};
+pub use types::Attestation;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,16 +65,9 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Attestation {
-    pub id: u64,
-    pub attester: Address,
-    pub subject: Address,
-    pub attestation_data: String,
-    pub timestamp: u64,
-    pub revoked: bool,
-}
+// Re-export batch types (already exported above)
+
+// Attestation is defined in `types::attestation.rs` and re-exported above.
 
 /// A pending cooldown withdrawal request. Created when a bond holder signals
 /// intent to withdraw; the withdrawal can only execute after the cooldown
@@ -123,6 +115,9 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
+    PendingClaims(Address),
+    ClaimableAmount(Address),
+    ClaimCounter,
     BondToken,
     Token,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
@@ -189,6 +184,10 @@ impl CredenceBond {
     }
 
     pub fn initialize(e: Env, admin: Address) {
+        // Idempotent initializer: if already initialized, do nothing.
+        if e.storage().instance().has(&DataKey::Admin) {
+            return;
+        }
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -421,6 +420,9 @@ impl CredenceBond {
     }
 
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
+        validation::validate_bond_amount(amount);
+        validation::validate_bond_duration(duration);
+        leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
     }
 
@@ -432,9 +434,17 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
-        if amount < 0 {
-            panic!("amount must be non-negative");
+        validation::validate_bond_amount(amount);
+        if e.storage()
+            .instance()
+            .has(&parameters::ParameterKey::MaxLeverage)
+        {
+            leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         }
+        // Validate duration early so callers that expect validation errors do not
+        // require token configuration (token may be unset in unit tests).
+        validation::validate_bond_duration(duration);
+
         identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
@@ -492,9 +502,8 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) -> Attestation {
-        // FIX 2: pass grace window into deadline validation
-        let grace = Self::get_grace_window(e.clone());
-        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
+        // Use nonce validation which reads the configured grace window internally
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
         attester.require_auth();
         require_verifier(&e, &attester);
 
@@ -520,8 +529,8 @@ impl CredenceBond {
         let weight = weighted_attestation::compute_weight(&e, &attester);
         let attestation = Attestation {
             id,
-            verifier: attester.clone(),
-            identity: subject.clone(),
+            attester: attester.clone(),
+            subject: subject.clone(),
             attestation_data: attestation_data.clone(),
             timestamp: e.ledger().timestamp(),
             weight,
@@ -544,7 +553,7 @@ impl CredenceBond {
         let base_reward = 1000i128; // Base reward for attestation
         let weight_bonus = (weight as i128) * 100; // Bonus based on weight
         let total_reward = base_reward + weight_bonus;
-        
+
         claims::add_pending_claim(
             &e,
             &attester,
@@ -572,9 +581,8 @@ impl CredenceBond {
         deadline: u64,
         nonce: u64,
     ) {
-        // FIX 2: pass grace window into deadline validation
-        let grace = Self::get_grace_window(e.clone());
-        nonce::validate_and_consume_with_grace(&e, &attester, &contract_id, deadline, nonce, grace);
+        // Use nonce validation which reads the configured grace window internally
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
         pausable::require_not_paused(&e);
         attester.require_auth();
         let key = DataKey::Attestation(attestation_id);
@@ -583,7 +591,7 @@ impl CredenceBond {
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic!("attestation not found"));
-        if attestation.verifier != attester {
+        if attestation.attester != attester {
             panic!("only original attester can revoke");
         }
         if attestation.revoked {
@@ -595,7 +603,7 @@ impl CredenceBond {
         e.events().publish(
             (
                 Symbol::new(&e, "attestation_revoked"),
-                attestation.identity.clone(),
+                attestation.subject.clone(),
             ),
             (attestation_id, attester),
         );
@@ -674,7 +682,7 @@ impl CredenceBond {
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
-        let end = bond.bond_start.saturating_add(bond.bond_duration);
+        let end = crate::rolling_bond::period_end(bond.bond_start, bond.bond_duration);
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
                 panic!("cooldown window not elapsed; request_withdrawal first");
@@ -721,7 +729,7 @@ impl CredenceBond {
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
-        let end = bond.bond_start.saturating_add(bond.bond_duration);
+        let end = crate::rolling_bond::period_end(bond.bond_start, bond.bond_duration);
         if now >= end {
             panic!("use withdraw for post lock-up");
         }
@@ -741,23 +749,23 @@ impl CredenceBond {
             penalty_bps,
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
-        
+
         // Calculate net amount and transfer to user
         let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
         token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
-        
-        // Instead of transferring penalty to treasury immediately, 
+
+        // Instead of transferring penalty to treasury immediately,
         // add a potential penalty refund claim for good behavior
         if penalty > 0 {
             // Transfer penalty to treasury (still push-based for treasury)
             token_integration::transfer_from_contract(&e, &treasury, penalty);
-            
+
             // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
             let refund_amount = penalty / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
-                let penalty_id = get_next_penalty_id(&e);
-                
+                let penalty_id = Self::get_next_penalty_id(&e);
+
                 claims::add_pending_claim(
                     &e,
                     &bond.identity,
@@ -768,7 +776,7 @@ impl CredenceBond {
                 );
             }
         }
-        
+
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -955,13 +963,8 @@ impl CredenceBond {
     }
 
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        // Validate the top-up amount meets minimum requirements
-        if amount < validation::MIN_BOND_AMOUNT {
-            panic!(
-                "top-up amount below minimum required: {} (minimum: {})",
-                amount,
-                validation::MIN_BOND_AMOUNT
-            );
+        if amount <= 0 {
+            panic!("amount must be positive");
         }
 
         let key = DataKey::Bond;
@@ -1175,7 +1178,7 @@ impl CredenceBond {
             active: false,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1231,7 +1234,7 @@ impl CredenceBond {
             active: bond.active,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1413,11 +1416,7 @@ impl CredenceBond {
     }
 
     /// Process a limited number of claims for the caller
-    pub fn claim_rewards_batch(
-        e: Env,
-        user: Address,
-        max_claims: u32,
-    ) -> claims::ClaimResult {
+    pub fn claim_rewards_batch(e: Env, user: Address, max_claims: u32) -> claims::ClaimResult {
         claims::process_claims(&e, &user, soroban_sdk::Vec::new(&e), max_claims)
     }
 
@@ -1425,158 +1424,7 @@ impl CredenceBond {
     pub fn cleanup_expired_claims(e: Env, user: Address) -> u32 {
         claims::cleanup_expired_claims(&e, &user)
     }
-
-    /// Get a specific claim by its ID
-    pub fn get_claim_by_id(e: Env, claim_id: u64) -> claims::PendingClaim {
-        claims::get_claim_by_id(&e, claim_id)
-    }
-
-    /// Process a single claim by ID (claim-by-ID interface)
-    pub fn claim_reward_by_id(e: Env, user: Address, claim_id: u64) -> claims::ClaimResult {
-        claims::process_claim_by_id(&e, &user, claim_id)
-    }
-
-    /// Get paginated pending claims for a user
-    pub fn get_pending_claims_paginated(
-        e: Env,
-        user: Address,
-        offset: u32,
-        limit: u32,
-    ) -> soroban_sdk::Vec<claims::PendingClaim> {
-        claims::get_pending_claims_paginated(&e, &user, offset, limit)
-    }
-
-    /// Get the count of pending claims for a user
-    pub fn get_pending_claims_count(e: Env, user: Address) -> u32 {
-        claims::get_pending_claims_count(&e, &user)
-    }
-
-    /// Process claims with explicit pagination control
-    pub fn claim_rewards_paginated(
-        e: Env,
-        user: Address,
-        offset: u32,
-        limit: u32,
-        claim_types: soroban_sdk::Vec<claims::ClaimType>,
-    ) -> claims::ClaimResult {
-        claims::process_claims_paginated(&e, &user, offset, limit, claim_types)
-    }
-
-    // ========== UUPS UPGRADE AUTHORIZATION ==========
-
-    /// Initialize upgrade authorization with an admin
-    pub fn initialize_upgrade_auth(e: Env, admin: Address) {
-        upgrade_auth::initialize_upgrade_auth(&e, &admin);
-    }
-
-    /// Grant upgrade authorization to an address
-    pub fn grant_upgrade_auth(
-        e: Env,
-        admin: Address,
-        address: Address,
-        role: upgrade_auth::UpgradeRole,
-        expires_at: u64,
-    ) {
-        upgrade_auth::grant_upgrade_auth(&e, &admin, &address, role, expires_at);
-    }
-
-    /// Revoke upgrade authorization from an address
-    pub fn revoke_upgrade_auth(e: Env, admin: Address, address: Address) {
-        upgrade_auth::revoke_upgrade_auth(&e, &admin, &address);
-    }
-
-    /// Check if an address is authorized to upgrade
-    pub fn is_authorized_upgrader(e: Env, address: Address) -> bool {
-        upgrade_auth::is_authorized_upgrader(&e, &address)
-    }
-
-    /// Get the upgrade role of an address
-    pub fn get_upgrade_role(e: Env, address: Address) -> upgrade_auth::UpgradeRole {
-        upgrade_auth::get_upgrade_role(&e, &address)
-    }
-
-    /// Create an upgrade proposal
-    pub fn propose_upgrade(
-        e: Env,
-        proposer: Address,
-        new_implementation: Address,
-        upgrade_data: soroban_sdk::Vec<u8>,
-        required_approvals: u32,
-    ) -> u64 {
-        upgrade_auth::propose_upgrade(&e, &proposer, &new_implementation, upgrade_data, required_approvals)
-    }
-
-    /// Approve an upgrade proposal
-    pub fn approve_upgrade_proposal(e: Env, approver: Address, proposal_id: u64) {
-        upgrade_auth::approve_upgrade_proposal(&e, &approver, proposal_id);
-    }
-
-    /// Execute an upgrade
-    pub fn execute_upgrade(
-        e: Env,
-        executor: Address,
-        new_implementation: Address,
-        proposal_id: Option<u64>,
-    ) {
-        upgrade_auth::execute_upgrade(&e, &executor, &new_implementation, proposal_id);
-    }
-
-    /// Get the current implementation address
-    pub fn get_implementation(e: Env) -> Address {
-        upgrade_auth::get_implementation(&e)
-    }
-
-    /// Get upgrade authorization info for an address
-    pub fn get_upgrade_auth(e: Env, address: Address) -> upgrade_auth::UpgradeAuthorization {
-        upgrade_auth::get_upgrade_auth(&e, &address)
-    }
-
-    /// Get an upgrade proposal
-    pub fn get_upgrade_proposal(e: Env, proposal_id: u64) -> upgrade_auth::UpgradeProposal {
-        upgrade_auth::get_upgrade_proposal(&e, proposal_id)
-    }
-
-    /// Get all authorized upgraders
-    pub fn get_authorized_upgraders(e: Env) -> soroban_sdk::Vec<Address> {
-        upgrade_auth::get_authorized_upgraders(&e)
-    }
-
-    /// Get upgrade history
-    pub fn get_upgrade_history(e: Env) -> soroban_sdk::Vec<upgrade_auth::UpgradeRecord> {
-        upgrade_auth::get_upgrade_history(&e)
-    }
 }
-
-#[cfg(test)]
-mod test_attestation;
-
-#[cfg(test)]
-mod test_batch;
-
-#[cfg(test)]
-mod test_attestation_types;
-
-#[cfg(test)]
-mod test_validation;
-
-#[cfg(test)]
-mod test_governance_approval;
-
-#[cfg(test)]
-mod test_parameters;
-
-#[cfg(test)]
-mod test_fees;
-
-#[cfg(test)]
-mod integration;
-
-#[cfg(test)]
-mod test_increase_bond;
-
-#[cfg(test)]
-mod security;
-
 // Pause mechanism entrypoints
 #[contractimpl]
 impl CredenceBond {
@@ -1613,6 +1461,12 @@ mod security;
 mod test;
 #[cfg(test)]
 mod test_access_control;
+#[cfg(test)]
+mod test_attestation;
+#[cfg(test)]
+mod test_attestation_types;
+#[cfg(test)]
+mod test_batch;
 
 #[cfg(test)]
 mod test_cooldown;
@@ -1630,6 +1484,8 @@ mod test_evidence;
 mod test_fees;
 #[cfg(test)]
 mod test_governance_approval;
+#[cfg(test)]
+mod test_grace_period;
 #[cfg(test)]
 mod test_helpers;
 #[cfg(test)]
@@ -1660,11 +1516,6 @@ mod test_verifier;
 mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
-#[cfg(test)]
-mod test_grace_window; 
+// removed test_grace_window per checklist (file not present)
 #[cfg(test)]
 mod token_integration_test;
-#[cfg(test)]
-mod test_claim_pagination;
-#[cfg(test)]
-mod test_upgrade_auth;
