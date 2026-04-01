@@ -33,6 +33,7 @@ fn test_initialize() {
         }
     );
     assert_eq!(client.get_threshold(), 0);
+    assert_eq!(client.get_min_liquidity(), 0);
 }
 
 fn counter_to_u128(counter: &CumulativeAmount) -> u128 {
@@ -453,8 +454,6 @@ fn test_execute_withdrawal_min_amount_out_below_proposal_succeeds() {
 #[should_panic(expected = "slippage: received amount below minimum")]
 fn test_execute_withdrawal_slippage_reverts_when_below_min() {
     // min_amount_out > proposal.amount → must revert.
-    // Simulates adversarial pool behaviour: proposal was created for 500 but
-    // the caller now requires at least 501 (e.g. price moved unfavourably).
     let (_e, client, id) = setup_ready_proposal(500);
     client.execute_withdrawal(&id, &501);
 }
