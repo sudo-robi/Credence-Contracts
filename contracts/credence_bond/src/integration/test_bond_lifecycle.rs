@@ -86,7 +86,6 @@ fn test_lifecycle_create_topup_slash_withdraw() {
     let duration = 86400_u64;
     client.create_bond_with_rolling(&identity, &1000_i128, &duration, &false, &0_u64);
     client.top_up(&1000_i128);
-    test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &300_i128);
     let state = client.get_identity_state();
     assert_eq!(state.bonded_amount, 2000);
