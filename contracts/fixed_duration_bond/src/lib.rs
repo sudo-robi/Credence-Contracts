@@ -78,14 +78,10 @@ fn apply_bps(amount: i128, bps: u32) -> (i128, i128) {
 
 /// Verify balance-delta for token transfer to reject fee-on-transfer tokens.
 /// Call before performing transfer_from to verify received amount.
-/// 
+///
 /// # Panics
 /// If balance increased by less than expected amount after transfer_from.
-fn verify_transfer_in(
-    token_client: &TokenClient,
-    contract: &Address,
-    expected_amount: i128,
-) {
+fn verify_transfer_in(token_client: &TokenClient, contract: &Address, expected_amount: i128) {
     let balance_before = token_client.balance(contract);
     let balance_after = token_client.balance(contract);
     let actual_received = balance_after
@@ -99,7 +95,7 @@ fn verify_transfer_in(
 
 /// Verify balance-delta for token transfer to reject fee-on-transfer tokens.
 /// Call after performing transfer to verify sent amount.
-/// 
+///
 /// # Panics
 /// If balance decreased by less than expected amount after transfer.
 fn verify_transfer_out(
@@ -264,10 +260,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlistEnabled, &enabled);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_allowlist_toggled"),),
-            (enabled,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_allowlist_toggled"),), (enabled,));
     }
 
     /// Allow a receiver address to receive protocol-controlled funds when the
@@ -277,10 +271,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlist(receiver.clone()), &true);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_allowed"),),
-            (receiver,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_allowed"),), (receiver,));
     }
 
     /// Revoke an allowed receiver.
@@ -289,10 +281,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlist(receiver.clone()), &false);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_revoked"),),
-            (receiver,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_revoked"),), (receiver,));
     }
 
     /// Collect all accrued creation fees to the admin or treasury.
@@ -315,10 +305,10 @@ impl FixedDurationBond {
 
         let token = get_token(&e);
         let contract = e.current_contract_address();
-        
+
         // Validate recipient to prevent transfers to invalid addresses
         validate_recipient(&recipient, &contract);
-        
+
         TokenClient::new(&e, &token).transfer(&contract, &recipient, &accrued);
 
         e.events().publish(
@@ -400,7 +390,7 @@ impl FixedDurationBond {
 
         // Check balance before transfer to detect fee-on-transfer tokens
         let balance_before = token_client.balance(&contract);
-        
+
         token_client.transfer_from(&contract, &owner, &contract, &amount);
 
         // Verify balance increased by exactly the expected amount
@@ -500,7 +490,7 @@ impl FixedDurationBond {
 
         // Check balance before transfer to detect fee-on-transfer tokens
         let balance_before = token_client.balance(&contract);
-        
+
         token_client.transfer(&contract, &owner, &bond.amount);
 
         // Verify balance decreased by exactly the expected amount

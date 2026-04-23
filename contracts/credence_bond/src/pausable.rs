@@ -107,8 +107,10 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
         .set(&DataKey::PauseThreshold, &threshold);
 
     // Emit old and new values for auditability
-    e.events()
-        .publish((Symbol::new(e, "pause_threshold_set"),), (old_threshold, threshold));
+    e.events().publish(
+        (Symbol::new(e, "pause_threshold_set"),),
+        (old_threshold, threshold),
+    );
 }
 
 fn require_pause_signer(e: &Env, signer: &Address) {

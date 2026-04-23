@@ -859,5 +859,9 @@ fn test_no_duplicate_events_on_parameter_update() {
     let events_after = e.events().all().len();
 
     // Exactly one event emitted per setter call
-    assert_eq!(events_after - events_before, 1, "expected exactly 1 event per setter");
+    assert_eq!(
+        events_after - events_before,
+        1,
+        "expected exactly 1 event per setter"
+    );
 }

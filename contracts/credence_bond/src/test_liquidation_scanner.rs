@@ -125,12 +125,17 @@ fn test_pagination_covers_all_holders_no_overlap() {
         };
         total_scanned += scanned_this_page;
         pages += 1;
-        if result.done { break; }
+        if result.done {
+            break;
+        }
         assert!(result.next_cursor > cursor, "cursor must advance");
         cursor = result.next_cursor;
         assert!(pages <= total + 1, "too many pages");
     }
-    assert_eq!(total_scanned, total, "all holders must be scanned exactly once");
+    assert_eq!(
+        total_scanned, total,
+        "all holders must be scanned exactly once"
+    );
 }
 
 #[test]

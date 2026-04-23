@@ -354,9 +354,9 @@ impl DisputeContract {
         let outcome = if dispute.votes_for_disputer > dispute.votes_for_slasher {
             // Verify balance delta when returning stake to disputer
             let balance_before = token_client.balance(&contract_address);
-            
+
             token_client.transfer(&contract_address, &dispute.disputer, &dispute.stake);
-            
+
             // Verify balance decreased by exactly the expected amount
             let balance_after = token_client.balance(&contract_address);
             let actual_sent = balance_before

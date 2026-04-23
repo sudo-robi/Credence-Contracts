@@ -191,7 +191,7 @@ impl CredenceTreasury {
     }
 
     /// Receive protocol fee or slashed funds report. Caller must be admin or an authorized depositor.
-    /// 
+    ///
     /// # Important Design Notes
     /// This function records fee amounts reported by other contracts (e.g., credence_bond).
     /// The treasury itself does NOT hold tokens — it is purely an accounting system.  
@@ -394,8 +394,10 @@ impl CredenceTreasury {
         let old_threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
         e.storage().instance().set(&DataKey::Threshold, &threshold);
         // Emit old and new values for auditability
-        e.events()
-            .publish((Symbol::new(&e, "threshold_updated"),), (old_threshold, threshold));
+        e.events().publish(
+            (Symbol::new(&e, "threshold_updated"),),
+            (old_threshold, threshold),
+        );
     }
 
     /// Propose a withdrawal. Only a signer can propose. Creates a proposal that can be approved and executed.
@@ -502,7 +504,7 @@ impl CredenceTreasury {
     }
 
     /// Execute a withdrawal proposal. Callable by anyone once approval count >= threshold.
-    /// 
+    ///
     /// This function marks a proposal as executed and updates the internal balance tracking.
     /// The actual token transfer is caller's responsibility (use the proposal details to arrange
     /// transfer externally or via callback contract).
@@ -548,8 +550,14 @@ impl CredenceTreasury {
         }
 
         // Liquidity guard: Ensure remaining balance doesn't breach the minimum floor.
-        let min_liquidity: i128 = e.storage().instance().get(&DataKey::MinLiquidity).unwrap_or(0);
-        let remaining = total.checked_sub(proposal.amount).expect("withdrawal underflow");
+        let min_liquidity: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinLiquidity)
+            .unwrap_or(0);
+        let remaining = total
+            .checked_sub(proposal.amount)
+            .expect("withdrawal underflow");
         if remaining < min_liquidity {
             panic!("liquidity guard: withdrawal would breach minimum liquidity floor");
         }
@@ -613,13 +621,19 @@ impl CredenceTreasury {
         }
         admin.require_auth();
 
-        e.storage().instance().set(&DataKey::MinLiquidity, &min_liquidity);
-        e.events().publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
+        e.storage()
+            .instance()
+            .set(&DataKey::MinLiquidity, &min_liquidity);
+        e.events()
+            .publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
     }
 
     /// Get current minimum liquidity floor.
     pub fn get_min_liquidity(e: Env) -> i128 {
-        e.storage().instance().get(&DataKey::MinLiquidity).unwrap_or(0)
+        e.storage()
+            .instance()
+            .get(&DataKey::MinLiquidity)
+            .unwrap_or(0)
     }
 
     /// Get total treasury balance.
@@ -741,7 +755,7 @@ impl CredenceTreasury {
     /// This function protects user-accounted balances from accidental extraction.
     pub fn rescue_native(e: Env, admin: Address, to: Address, amount: i128) {
         admin.require_auth();
-        
+
         // Verify admin authorization
         let stored_admin: Address = e
             .storage()
@@ -768,12 +782,12 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::TotalBalance)
             .unwrap_or(0);
-        
+
         // Only allow rescue of excess native tokens beyond accounted treasury balance
         // For now, we'll skip the actual balance check to avoid re-entry issues in tests
         // In production, this would need to be handled differently
         let available_for_rescue = treasury_balance; // Simplified for testing
-        
+
         if amount > available_for_rescue {
             panic_with_error!(&e, ContractError::ExceedsRescueableAmount);
         }
@@ -785,9 +799,7 @@ impl CredenceTreasury {
         // token_client.transfer(&contract_address, &to, &amount);
 
         // Emit rescue event for transparency
-        e.events().publish(
-            (Symbol::new(&e, "native_rescued"),),
-            (to, amount, admin),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));
     }
 }

@@ -233,7 +233,8 @@ fn test_grace_window_is_inclusive_until_expires_at() {
     e.ledger().with_mut(|li| {
         li.timestamp = second_proposal_time;
     });
-    let id_at_expiry = client.queue_change(&admin, &key_at_expiry, &300, &(second_proposal_time + 10));
+    let id_at_expiry =
+        client.queue_change(&admin, &key_at_expiry, &300, &(second_proposal_time + 10));
     let change_at_expiry = client.get_change(&id_at_expiry);
 
     e.ledger().with_mut(|li| {
