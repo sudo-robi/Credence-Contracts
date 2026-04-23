@@ -12,7 +12,6 @@
 //! Note: `DataKey::AttesterStake(verifier)` is kept in sync with the staked amount so that
 //! weighted attestations can use real stake.
 
-use soroban_sdk::token::TokenClient;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 use crate::safe_token;

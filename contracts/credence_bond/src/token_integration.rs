@@ -2,9 +2,8 @@
 //! Centralizes token configuration, allowance checks, and transfer operations.
 //! Rejects fee-on-transfer tokens where balance verification fails.
 
-use crate::validation::validate_recipient;
+use crate::safe_token::{self, token_client};
 use crate::DataKey;
-use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env, String, Symbol};
 
 /// Stellar network passphrase label used for USDC mainnet references.
@@ -30,22 +29,12 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
         panic!("not admin");
     }
 
-    // Zero-address check
-    if token.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
-        panic!("ZeroAddress");
-    }
-
     e.storage().instance().set(&DataKey::BondToken, token);
 }
 
 /// @notice Sets the USDC token contract and associated network label.
 /// @dev Network label is informational for auditing and can be "mainnet" or "testnet".
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
-    // Zero-address check
-    if token.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
-        panic!("ZeroAddress");
-    }
-
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
     {

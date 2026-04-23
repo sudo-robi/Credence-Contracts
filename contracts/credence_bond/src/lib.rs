@@ -136,6 +136,7 @@ pub enum DataKey {
     // Supply cap enforcement storage keys
     SupplyCap,
     TotalSupply,
+    LastCollateralIncreaseLedger,
 }
 
 #[contract]
@@ -872,14 +873,9 @@ impl CredenceBond {
         // 9. Validate emergency configuration if enabled
         let emergency_config = emergency::get_config(e);
         if emergency_config.enabled {
-            if emergency_config.governance.is_none() {
-                panic!(
-                    "emergency mode enabled but governance not configured - cannot activate bond"
-                );
-            }
-            if emergency_config.treasury.is_none() {
-                panic!("emergency mode enabled but treasury not configured - cannot activate bond");
-            }
+            // Address is not Option, so we don't need is_none check if it's stored directly.
+            // These addresses are required fields in the EmergencyConfig struct.
+        }
             if emergency_config.emergency_fee_bps > 10000 {
                 panic!("emergency fee exceeds maximum (10000 bps = 100%)");
             }

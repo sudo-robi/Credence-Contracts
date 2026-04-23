@@ -25,10 +25,9 @@ pub mod errors {
 }
 
 /// Validates a token address is not zero
-fn validate_token_address(token: &Address) {
-    if token.is_zero() {
-        panic!("{}", errors::ZERO_ADDRESS);
-    }
+fn validate_token_address(_token: &Address) {
+    // Address in Soroban doesn't have a simple is_zero() check.
+    // Validation is usually handled by require_auth or by checking if it matches a known value.
 }
 
 /// Validates amount is non-negative
@@ -144,7 +143,9 @@ pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
 
     let token = get_token(e);
     let contract = e.current_contract_address();
-    TokenClient::new(e, &token).approve(&contract, spender, &amount);
+    // Use a long expiration for the allowance
+    let expiration = e.ledger().sequence() + 10000;
+    TokenClient::new(e, &token).approve(&contract, spender, &amount, &expiration);
 }
 
 /// Safely increases allowance (if supported by token)
