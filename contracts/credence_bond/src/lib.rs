@@ -35,7 +35,6 @@ mod validation;
 pub mod verifier;
 mod weighted_attestation;
 
-
 use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
