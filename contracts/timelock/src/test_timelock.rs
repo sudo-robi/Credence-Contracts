@@ -511,7 +511,7 @@ fn test_execute_window_boundary_checks() {
     // 2. Propose another one to test expiry boundary
     let id2 = client.propose_change(&admin, &key, &456);
     let change2 = client.get_change(&id2);
-    
+
     // Exactly at expires_at should work
     e.ledger().with_mut(|li| {
         li.timestamp = change2.expires_at;

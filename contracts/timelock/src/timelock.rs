@@ -60,7 +60,7 @@ impl Timelock {
     /// @param min_delay  Minimum delay in seconds before a change can be executed
     pub fn initialize(e: Env, admin: Address, governance: Address, min_delay: u64) {
         if e.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized"); 
+            panic!("already initialized");
         }
         admin.require_auth();
         if min_delay == 0 {
