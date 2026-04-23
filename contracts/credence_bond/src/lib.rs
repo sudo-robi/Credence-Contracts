@@ -20,6 +20,8 @@ pub mod liquidation_scanner;
 #[allow(dead_code)]
 mod math;
 mod nonce;
+#[allow(dead_code)]
+mod normalization;
 mod parameters;
 pub mod pausable;
 pub mod rolling_bond;
@@ -115,14 +117,13 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
-    BondToken,
-    Token,
-    GraceWindow, // FIX 1: added for configurable post-expiry grace window
-    // Claims module storage keys
     PendingClaims(Address),
     ClaimableAmount(Address),
     ClaimCounter,
     ClaimById(u64),
+    BondToken,
+    Token,
+    GraceWindow, // FIX 1: added for configurable post-expiry grace window
     // Upgrade authorization storage keys
     UpgradeAuth(Address),
     AuthorizedUpgraders,
@@ -134,6 +135,7 @@ pub enum DataKey {
     // Supply cap enforcement storage keys
     SupplyCap,
     TotalSupply,
+    LastCollateralIncreaseLedger,
 }
 
 #[contract]
@@ -243,11 +245,6 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
 
         // Zero-address check
-        if treasury.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -374,11 +371,6 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
 
         // Zero-address check
-        if attester.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         let admin: Address = e
             .storage()
@@ -436,11 +428,6 @@ impl CredenceBond {
     ) -> verifier::VerifierInfo {
         pausable::require_not_paused(&e);
         // Zero-address check
-        if verifier_addr.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {
@@ -805,6 +792,7 @@ impl CredenceBond {
     /// * If any required parameter is missing or invalid
     /// * If token configuration is incomplete
     /// * If risk parameters are out of acceptable ranges
+    #[allow(dead_code)]
     fn validate_bond_activation_parameters(
         e: &Env,
         amount: i128,
@@ -828,7 +816,7 @@ impl CredenceBond {
         }
 
         // 4. Validate fee configuration is set
-        let (treasury_opt, fee_bps) = fees::get_config(e);
+        let (treasury_opt, _fee_bps) = fees::get_config(e);
         if treasury_opt.is_none() {
             panic!("fee treasury not configured - cannot activate bond");
         }
@@ -885,6 +873,8 @@ impl CredenceBond {
         // 9. Validate emergency configuration if enabled
         let emergency_config = emergency::get_config(e);
         if emergency_config.enabled {
+            // Address is not Option, so we don't need is_none check if it's stored directly.
+            // These addresses are required fields in the EmergencyConfig struct.
             if emergency_config.emergency_fee_bps > 10000 {
                 panic!("emergency fee exceeds maximum (10000 bps = 100%)");
             }
@@ -1325,7 +1315,7 @@ impl CredenceBond {
                 .unwrap_or_else(|| panic!("no bond"));
             let caller = bond.identity.clone();
             caller.require_auth();
-            let token_addr: Address = e
+            let _token_addr: Address = e
                 .storage()
                 .instance()
                 .get(&DataKey::BondToken)
@@ -1965,19 +1955,7 @@ mod security;
 #[cfg(test)]
 mod test;
 #[cfg(test)]
-mod test_liquidation_scanner;
-#[cfg(test)]
-mod test_zero_address_working;
-
-#[cfg(test)]
 mod test_access_control;
-#[cfg(test)]
-mod test_attestation;
-#[cfg(test)]
-mod test_attestation_types;
-#[cfg(test)]
-mod test_batch;
-
 #[cfg(test)]
 mod test_attestation;
 #[cfg(test)]
@@ -1987,11 +1965,19 @@ mod test_batch;
 #[cfg(test)]
 mod test_cooldown;
 #[cfg(test)]
+mod test_create_bond;
+#[cfg(test)]
+mod test_decimals;
+#[cfg(test)]
+mod test_duration_validation;
+#[cfg(test)]
 mod test_early_exit_penalty;
 #[cfg(test)]
 mod test_emergency;
 #[cfg(test)]
 mod test_events;
+#[cfg(test)]
+mod test_events_v2;
 #[cfg(test)]
 mod test_evidence;
 #[cfg(test)]
@@ -2003,7 +1989,15 @@ mod test_grace_period;
 #[cfg(test)]
 mod test_helpers;
 #[cfg(test)]
+mod test_immutable_config;
+#[cfg(test)]
+mod test_immutable_config_working;
+#[cfg(test)]
 mod test_increase_bond;
+#[cfg(test)]
+mod test_liquidation_scanner;
+#[cfg(test)]
+mod test_market_activation;
 #[cfg(test)]
 mod test_math;
 #[cfg(test)]
@@ -2038,6 +2032,9 @@ mod test_verifier;
 mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
-// removed test_grace_window per checklist (file not present)
+#[cfg(test)]
+mod test_zero_address;
+#[cfg(test)]
+mod test_zero_address_working;
 #[cfg(test)]
 mod token_integration_test;

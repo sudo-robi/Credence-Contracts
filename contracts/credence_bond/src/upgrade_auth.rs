@@ -10,7 +10,7 @@
 //! - Upgrade history tracking
 
 use crate::{events, DataKey};
-use soroban_sdk::{contracttype, Address, Bytes, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Bytes, Env, Vec};
 
 /// Upgrade authorization roles
 #[contracttype]
@@ -99,37 +99,31 @@ pub enum UpgradeError {
 /// Storage keys for upgrade authorization
 impl DataKey {
     /// Upgrade authorization by address: DataKey::UpgradeAuth(address) -> UpgradeAuthorization
-    pub const fn upgrade_auth(address: &Address) -> DataKey {
+    pub fn upgrade_auth(address: &Address) -> DataKey {
         DataKey::UpgradeAuth(address.clone())
     }
 
-    /// List of all authorized upgraders: DataKey::AuthorizedUpgraders -> Vec<Address>
-    pub const fn authorized_upgraders() -> DataKey {
+    pub fn authorized_upgraders() -> DataKey {
         DataKey::AuthorizedUpgraders
     }
 
-    /// Current implementation address: DataKey::Implementation -> Address
-    pub const fn implementation() -> DataKey {
+    pub fn implementation() -> DataKey {
         DataKey::Implementation
     }
 
-    /// Upgrade admin address: DataKey::UpgradeAdmin -> Address
-    pub const fn upgrade_admin() -> DataKey {
+    pub fn upgrade_admin() -> DataKey {
         DataKey::UpgradeAdmin
     }
 
-    /// Upgrade proposal by ID: DataKey::UpgradeProposal(proposal_id) -> UpgradeProposal
-    pub const fn upgrade_proposal(proposal_id: u64) -> DataKey {
+    pub fn upgrade_proposal(proposal_id: u64) -> DataKey {
         DataKey::UpgradeProposal(proposal_id)
     }
 
-    /// Next proposal ID counter: DataKey::NextProposalId -> u64
-    pub const fn next_proposal_id() -> DataKey {
+    pub fn next_proposal_id() -> DataKey {
         DataKey::NextProposalId
     }
 
-    /// Upgrade history: DataKey::UpgradeHistory -> Vec<UpgradeRecord>
-    pub const fn upgrade_history() -> DataKey {
+    pub fn upgrade_history() -> DataKey {
         DataKey::UpgradeHistory
     }
 }

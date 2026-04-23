@@ -67,6 +67,9 @@ impl Timelock {
     /// @param governance Address that can cancel pending changes
     /// @param min_delay  Minimum delay in seconds before a change can be executed
     pub fn initialize(e: Env, admin: Address, governance: Address, min_delay: u64) {
+        if e.storage().instance().has(&DataKey::Admin) {
+            panic!("already initialized");
+        }
         admin.require_auth();
         if min_delay == 0 {
             panic!("min_delay must be greater than zero");
@@ -193,7 +196,7 @@ impl Timelock {
         };
 
         e.storage()
-            .instance()
+            .persistent()
             .set(&DataKey::PendingChange(id), &change);
 
         e.events().publish(
@@ -219,7 +222,7 @@ impl Timelock {
 
         let mut change: ParameterChange = e
             .storage()
-            .instance()
+            .persistent()
             .get(&DataKey::PendingChange(change_id))
             .unwrap_or_else(|| panic!("change not found"));
 
@@ -232,9 +235,11 @@ impl Timelock {
 
         let now = e.ledger().timestamp();
         if now < change.eta {
+            // Early execution forbidden: must be at or after ETA.
             panic!("timelock delay has not elapsed");
         }
         if now > change.expires_at {
+            // Late execution forbidden: must be at or before expires_at.
             panic!("execution window expired");
         }
 
@@ -252,7 +257,7 @@ impl Timelock {
 
         change.executed = true;
         e.storage()
-            .instance()
+            .persistent()
             .set(&DataKey::PendingChange(change_id), &change);
 
         e.events().publish(
@@ -280,7 +285,7 @@ impl Timelock {
 
         let mut change: ParameterChange = e
             .storage()
-            .instance()
+            .persistent()
             .get(&DataKey::PendingChange(change_id))
             .unwrap_or_else(|| panic!("change not found"));
 
@@ -293,7 +298,7 @@ impl Timelock {
 
         change.cancelled = true;
         e.storage()
-            .instance()
+            .persistent()
             .set(&DataKey::PendingChange(change_id), &change);
 
         e.events().publish(
@@ -331,7 +336,7 @@ impl Timelock {
     /// Get a parameter change by ID.
     pub fn get_change(e: Env, change_id: u64) -> ParameterChange {
         e.storage()
-            .instance()
+            .persistent()
             .get(&DataKey::PendingChange(change_id))
             .unwrap_or_else(|| panic!("change not found"))
     }
