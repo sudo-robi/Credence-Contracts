@@ -23,6 +23,7 @@ mod nonce;
 mod parameters;
 pub mod pausable;
 pub mod rolling_bond;
+mod safe_token;
 mod same_ledger_liquidation_guard;
 #[allow(dead_code)]
 mod slash_history;
@@ -30,7 +31,6 @@ mod slash_history;
 mod slashing;
 pub mod tiered_bond;
 mod token_integration;
-mod safe_token;
 pub mod types;
 pub mod upgrade_auth;
 mod validation;
