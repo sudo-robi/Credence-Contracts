@@ -163,3 +163,37 @@ fn test_set_emergency_config_rejects_invalid_fee_bps() {
 
     client.set_emergency_config(&admin, &governance, &treasury, &10_001_u32, &true);
 }
+
+#[test]
+fn test_set_emergency_mode_records_transition() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 20_000);
+    let (client, admin, governance, treasury, _identity) = setup(&e);
+
+    client.set_emergency_config(&admin, &governance, &treasury, &250, &false);
+    
+    // Switch to enabled
+    client.set_emergency_mode(&admin, &governance, &true);
+    
+    let latest_id = client.latest_emergency_transition();
+    assert_eq!(latest_id, 1);
+    
+    let transition = client.get_emergency_transition(&latest_id);
+    assert_eq!(transition.id, 1);
+    assert_eq!(transition.enabled, true);
+    assert_eq!(transition.approved_admin, admin);
+    assert_eq!(transition.approved_governance, governance);
+    assert_eq!(transition.timestamp, 20_000);
+    
+    // Switch to disabled
+    e.ledger().with_mut(|li| li.timestamp = 20_001);
+    client.set_emergency_mode(&admin, &governance, &false);
+    
+    let latest_id = client.latest_emergency_transition();
+    assert_eq!(latest_id, 2);
+    
+    let transition = client.get_emergency_transition(&latest_id);
+    assert_eq!(transition.id, 2);
+    assert_eq!(transition.enabled, false);
+    assert_eq!(transition.timestamp, 20_001);
+}

@@ -32,7 +32,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
     }
 
     // Zero-address check
-    if token.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+    if token.to_string() == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") {
         panic!("ZeroAddress");
     }
 
@@ -43,7 +43,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
 /// @dev Network label is informational for auditing and can be "mainnet" or "testnet".
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
     // Zero-address check
-    if token.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+    if token.to_string() == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") {
         panic!("ZeroAddress");
     }
 
@@ -77,7 +77,7 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 /// @notice Checks if owner has enough allowance for the contract to spend amount.
 /// @dev Uses safe allowance checking with proper error handling.
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
-    safe_token::safe_require_allowance(e, owner, amount);
+    crate::safe_token::safe_require_allowance(e, owner, amount);
 }
 
 /// @notice Transfers tokens from owner into the bond contract.
@@ -97,7 +97,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
     require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
-    let token = token_client(e);
+    let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
@@ -132,7 +132,8 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
-    let token = token_client(e);
+    let token = crate::safe_token::token_client(e);
+
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);

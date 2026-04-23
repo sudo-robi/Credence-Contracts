@@ -78,7 +78,7 @@ pub fn validate_bond_amount(amount: i128) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Address, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_validate_bond_amount_valid() {

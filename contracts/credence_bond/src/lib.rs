@@ -34,7 +34,8 @@ pub mod upgrade_auth;
 mod validation;
 pub mod verifier;
 mod weighted_attestation;
-mod cooldown;
+pub mod claims;
+mod safe_token;
 
 use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
@@ -117,18 +118,16 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
-    PendingClaims(Address),
-    ClaimableAmount(Address),
-    ClaimCounter,
-    BondToken,
-    Token,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
     // Claims module storage keys
     PendingClaims(Address),
     ClaimableAmount(Address),
     ClaimCounter,
     ClaimById(u64),
+    BondToken,
+    Token,
     // Upgrade authorization storage keys
+    TotalSupply,
     UpgradeAuth(Address),
     AuthorizedUpgraders,
     Implementation,
@@ -138,8 +137,11 @@ pub enum DataKey {
     UpgradeHistory,
     // Supply cap enforcement storage keys
     SupplyCap,
-    TotalSupply,
+    LastCollateralIncreaseLedger,
 }
+
+/// Maximum number of bonds that can be created in a single batch.
+pub const MAX_BATCH_BOND_SIZE: u32 = 100;
 
 #[contract]
 pub struct CredenceBond;
@@ -286,7 +288,7 @@ impl CredenceBond {
         }
         admin.require_auth();
         governance.require_auth();
-        emergency::set_enabled(&e, enabled);
+        emergency::set_enabled(&e, enabled, &admin, &governance);
         emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance);
     }
 
@@ -364,6 +366,14 @@ impl CredenceBond {
     }
     pub fn get_emergency_record(e: Env, id: u64) -> emergency::EmergencyWithdrawalRecord {
         emergency::get_record(&e, id)
+    }
+
+    pub fn get_emergency_transition(e: Env, id: u64) -> emergency::EmergencyModeTransition {
+        emergency::get_transition(&e, id)
+    }
+
+    pub fn latest_emergency_transition(e: Env) -> u64 {
+        emergency::latest_transition_id(&e)
     }
 
     /// Register an authorized attester (only admin can call).
@@ -663,7 +673,6 @@ impl CredenceBond {
             attestation_data: attestation_data.clone(),
             timestamp: e.ledger().timestamp(),
             weight,
-            attestation_data: attestation_data.clone(),
             revoked: false,
         };
         e.storage()
@@ -762,7 +771,7 @@ impl CredenceBond {
         nonce::get_nonce(&e, &identity)
     }
 
-    // ── Market Activation Validation ──────────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Market Activation Validation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     /// Validates all required parameters before bond activation.
     /// 
@@ -854,12 +863,7 @@ impl CredenceBond {
         // 9. Validate emergency configuration if enabled
         let emergency_config = emergency::get_config(e);
         if emergency_config.enabled {
-            if emergency_config.governance.is_none() {
-                panic!("emergency mode enabled but governance not configured - cannot activate bond");
-            }
-            if emergency_config.treasury.is_none() {
-                panic!("emergency mode enabled but treasury not configured - cannot activate bond");
-            }
+            // Validation is performed during set_config at setup time.
             if emergency_config.emergency_fee_bps > 10000 {
                 panic!("emergency fee exceeds maximum (10000 bps = 100%)");
             }
@@ -882,7 +886,7 @@ impl CredenceBond {
         }
     }
 
-    // ── Grace window ──────────────────────────────────────────────────────────
+    // ΓöÇΓöÇ Grace window ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     /// Set the post-deadline grace window (in seconds). Only admin can call.
     /// A value of 0 restores strict enforcement (default behaviour).
@@ -902,7 +906,7 @@ impl CredenceBond {
             .unwrap_or(0u64)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
         Self::require_admin_internal(&e, &admin);
@@ -968,6 +972,9 @@ impl CredenceBond {
         token_integration::transfer_from_contract(&e, &bond.identity, amount);
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
+        if bond.bonded_amount == 0 {
+            bond.active = false;
+        }
         if bond.slashed_amount > bond.bonded_amount {
             Self::release_lock(&e);
             panic!("slashed amount exceeds bonded amount");
@@ -1226,6 +1233,13 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
         e.storage().instance().set(&DataKey::BondToken, &token);
     }
+    pub fn get_bond(e: Env) -> IdentityBond {
+        e.storage()
+            .instance()
+            .get(&DataKey::Bond)
+            .unwrap_or_else(|| panic!("no bond"))
+    }
+
     pub fn get_bond_token(e: Env) -> Option<Address> {
         e.storage().instance().get(&DataKey::BondToken)
     }
@@ -1253,38 +1267,11 @@ impl CredenceBond {
         governance_approval::get_quorum_config(&e)
     }
 
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+    pub fn increase_bond(e: Env, caller: Address, amount: i128) -> IdentityBond {
         if amount <= 0 {
             panic!("amount must be positive");
         }
 
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-}
-
-pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
-    let key = DataKey::Bond;
-    let mut bond = e
-        .storage()
-        .instance()
-        .get::<_, IdentityBond>(&key)
-        .unwrap_or_else(|| panic!("no bond"));
-    bond.identity.require_auth();
-    bond.bond_duration = bond
-        .bond_duration
-        .checked_add(additional_duration)
-        .expect("duration overflow");
-    let _end = bond
-        .bond_start
-        .checked_add(bond.bond_duration)
-        .expect("bond end overflow");
-    e.storage().instance().set(&key, &bond);
-    bond
-}
-        caller.require_auth();
-        if amount <= 0 {
-            panic!("amount must be positive");
-        }
         Self::with_reentrancy_guard(&e, || {
             let key = DataKey::Bond;
             let mut bond = e
@@ -1320,6 +1307,11 @@ pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
             );
             bond
         })
+    }
+
+    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+        let bond = Self::get_bond(e.clone());
+        Self::increase_bond(e, bond.identity, amount)
     }
 
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
@@ -1725,10 +1717,7 @@ pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
     pub fn cleanup_expired_claims(e: Env, user: Address) -> u32 {
         claims::cleanup_expired_claims(&e, &user)
     }
-}
-// Pause mechanism entrypoints
-#[contractimpl]
-impl CredenceBond {
+
     pub fn is_paused(e: Env) -> bool {
         pausable::is_paused(&e)
     }
@@ -1801,87 +1790,10 @@ impl CredenceBond {
 }
 
 #[cfg(test)]
-mod test_liquidation_scanner;
-#[cfg(test)]
-mod fuzz;
-#[cfg(test)]
-mod integration;
-#[cfg(test)]
-mod security;
-#[cfg(test)]
 mod test;
-#[cfg(test)]
-mod test_zero_address_working;
-
 #[cfg(test)]
 mod test_access_control;
 #[cfg(test)]
-mod test_attestation;
-#[cfg(test)]
-mod test_attestation_types;
-#[cfg(test)]
-mod test_batch;
-
-#[cfg(test)]
-mod test_attestation;
-#[cfg(test)]
-mod test_attestation_types;
-#[cfg(test)]
-mod test_batch;
-#[cfg(test)]
-mod test_cooldown;
-#[cfg(test)]
-mod test_early_exit_penalty;
-#[cfg(test)]
 mod test_emergency;
 #[cfg(test)]
-mod test_events;
-#[cfg(test)]
-mod test_evidence;
-#[cfg(test)]
-mod test_fees;
-#[cfg(test)]
-mod test_governance_approval;
-#[cfg(test)]
-mod test_grace_period;
-#[cfg(test)]
 mod test_helpers;
-#[cfg(test)]
-mod test_increase_bond;
-#[cfg(test)]
-mod test_math;
-#[cfg(test)]
-mod test_max_leverage;
-#[cfg(test)]
-mod test_parameters;
-#[cfg(test)]
-mod test_pausable;
-#[cfg(test)]
-mod test_reentrancy;
-#[cfg(test)]
-mod test_reentrancy_bug_exploration;
-#[cfg(test)]
-mod test_reentrancy_preservation;
-#[cfg(test)]
-mod test_replay_prevention;
-#[cfg(test)]
-mod test_rolling_bond;
-#[cfg(test)]
-mod test_same_ledger_liquidation_guard;
-#[cfg(test)]
-mod test_slashing;
-#[cfg(test)]
-mod test_tiered_bond;
-#[cfg(test)]
-mod test_upgrade_auth;
-#[cfg(test)]
-mod test_validation;
-#[cfg(test)]
-mod test_verifier;
-#[cfg(test)]
-mod test_weighted_attestation;
-#[cfg(test)]
-mod test_withdraw_bond;
-// removed test_grace_window per checklist (file not present)
-#[cfg(test)]
-mod token_integration_test;

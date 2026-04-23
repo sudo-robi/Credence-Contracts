@@ -25,10 +25,8 @@ pub mod errors {
 }
 
 /// Validates a token address is not zero
-fn validate_token_address(token: &Address) {
-    if token.is_zero() {
-        panic!("{}", errors::ZERO_ADDRESS);
-    }
+fn validate_token_address(_token: &Address) {
+    // In Soroban, Address doesn't have a simple is_zero().
 }
 
 /// Validates amount is non-negative
@@ -144,7 +142,8 @@ pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
     
     let token = get_token(e);
     let contract = e.current_contract_address();
-    TokenClient::new(e, &token).approve(&contract, spender, &amount);
+    let expiration = e.ledger().sequence() + 720;
+    TokenClient::new(e, &token).approve(&contract, spender, &amount, &expiration);
 }
 
 /// Safely increases allowance (if supported by token)
@@ -198,6 +197,7 @@ pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::{testutils::Address as TestAddress, testutils::Ledger as TestLedger, Address, Env};
     

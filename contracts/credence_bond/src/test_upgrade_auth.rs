@@ -1,8 +1,9 @@
+extern crate std;
 use crate::{
     upgrade_auth::{
         self, UpgradeAuthorization, UpgradeProposal, UpgradeRecord, UpgradeRole, UpgradeStatus,
     },
-    CredenceBondClient,
+    CredenceBond, CredenceBondClient,
 };
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, Vec};
@@ -122,7 +123,7 @@ fn test_upgrade_proposal_and_approval() {
     upgrade_auth::grant_upgrade_auth(&env, &admin, &approver2, UpgradeRole::Upgrader, 0);
 
     // Create proposal requiring 2 approvals
-    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, Vec::new(&env), 2);
+    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, soroban_sdk::Bytes::new(&env), 2);
 
     // Verify proposal is pending
     let proposal = upgrade_auth::get_upgrade_proposal(&env, proposal_id);
@@ -169,7 +170,7 @@ fn test_upgrade_execution_with_proposal() {
     // For testing, we'll skip this and assume it's set
 
     // Create and approve proposal
-    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, Vec::new(&env), 1);
+    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, soroban_sdk::Bytes::new(&env), 1);
     upgrade_auth::approve_upgrade_proposal(&env, &approver, proposal_id);
 
     // Execute upgrade
@@ -276,7 +277,7 @@ fn test_proposal_expiry_handling() {
     upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
 
     // Create proposal
-    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, Vec::new(&env), 1);
+    let proposal_id = upgrade_auth::propose_upgrade(&env, &proposer, new_impl, soroban_sdk::Bytes::new(&env), 1);
 
     // In a real implementation, you'd test expiry by manipulating time
     // For now, we'll verify the proposal exists and is pending

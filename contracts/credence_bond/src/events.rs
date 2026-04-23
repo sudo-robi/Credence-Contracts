@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env, String, Symbol};
 
 /// Emitted when a new bond is created.
 ///
@@ -259,4 +259,57 @@ pub fn emit_claims_expired(e: &Env, user: &Address, expired_count: u32, expired_
     let topics = (Symbol::new(e, "claims_expired"), user.clone());
     let data = (expired_count, expired_amount);
     e.events().publish(topics, data);
+}
+
+pub fn emit_upgrade_auth_initialized(e: &Env, admin: &Address) {
+    e.events()
+        .publish((Symbol::new(e, "upgrade_auth_init"),), admin.clone());
+}
+
+pub fn emit_upgrade_auth_granted(
+    e: &Env,
+    admin: &Address,
+    address: &Address,
+    role: crate::upgrade_auth::UpgradeRole,
+) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_auth_granted"), admin.clone()),
+        (address.clone(), role),
+    );
+}
+
+pub fn emit_upgrade_auth_revoked(e: &Env, admin: &Address, address: &Address) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_auth_revoked"), admin.clone()),
+        address.clone(),
+    );
+}
+
+pub fn emit_upgrade_proposed(
+    e: &Env,
+    proposer: &Address,
+    proposal_id: u64,
+    new_implementation: &Address,
+) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_proposed"), proposal_id, proposer.clone()),
+        new_implementation.clone(),
+    );
+}
+
+pub fn emit_upgrade_approved(e: &Env, approver: &Address, proposal_id: u64) {
+    e.events()
+        .publish((Symbol::new(e, "upgrade_approved"), proposal_id), approver.clone());
+}
+
+pub fn emit_upgrade_executed(
+    e: &Env,
+    executor: &Address,
+    new_implementation: &Address,
+    proposal_id: Option<u64>,
+) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_executed"), proposal_id),
+        (executor.clone(), new_implementation.clone()),
+    );
 }
