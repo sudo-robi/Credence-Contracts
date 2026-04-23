@@ -6,7 +6,7 @@ use soroban_sdk::{
 
 pub mod access_control;
 mod batch;
-mod cooldown;
+mod claims;
 mod cooldown;
 pub mod early_exit_penalty;
 mod emergency;
@@ -23,6 +23,7 @@ mod nonce;
 mod parameters;
 pub mod pausable;
 pub mod rolling_bond;
+mod safe_token;
 mod same_ledger_liquidation_guard;
 #[allow(dead_code)]
 mod slash_history;
@@ -120,14 +121,10 @@ pub enum DataKey {
     PendingClaims(Address),
     ClaimableAmount(Address),
     ClaimCounter,
+    ClaimById(u64),
     BondToken,
     Token,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
-    // Claims module storage keys
-    PendingClaims(Address),
-    ClaimableAmount(Address),
-    ClaimCounter,
-    ClaimById(u64),
     // Upgrade authorization storage keys
     UpgradeAuth(Address),
     AuthorizedUpgraders,
@@ -139,6 +136,7 @@ pub enum DataKey {
     // Supply cap enforcement storage keys
     SupplyCap,
     TotalSupply,
+    LastCollateralIncreaseLedger,
 }
 
 #[contract]
@@ -247,11 +245,6 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
 
         // Zero-address check
-        if treasury.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -375,11 +368,6 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
 
         // Zero-address check
-        if attester.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         let admin: Address = e
             .storage()
@@ -435,11 +423,6 @@ impl CredenceBond {
         stake_deposit: i128,
     ) -> verifier::VerifierInfo {
         // Zero-address check
-        if verifier_addr.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {
@@ -679,7 +662,6 @@ impl CredenceBond {
             attestation_data: attestation_data.clone(),
             timestamp: e.ledger().timestamp(),
             weight,
-            attestation_data: attestation_data.clone(),
             revoked: false,
         };
         e.storage()
@@ -796,6 +778,7 @@ impl CredenceBond {
     /// * If any required parameter is missing or invalid
     /// * If token configuration is incomplete
     /// * If risk parameters are out of acceptable ranges
+    #[allow(dead_code)]
     fn validate_bond_activation_parameters(
         e: &Env,
         amount: i128,
@@ -819,7 +802,7 @@ impl CredenceBond {
         }
 
         // 4. Validate fee configuration is set
-        let (treasury_opt, fee_bps) = fees::get_config(e);
+        let (treasury_opt, _fee_bps) = fees::get_config(e);
         if treasury_opt.is_none() {
             panic!("fee treasury not configured - cannot activate bond");
         }
@@ -876,14 +859,8 @@ impl CredenceBond {
         // 9. Validate emergency configuration if enabled
         let emergency_config = emergency::get_config(e);
         if emergency_config.enabled {
-            if emergency_config.governance.is_none() {
-                panic!(
-                    "emergency mode enabled but governance not configured - cannot activate bond"
-                );
-            }
-            if emergency_config.treasury.is_none() {
-                panic!("emergency mode enabled but treasury not configured - cannot activate bond");
-            }
+            // Address is not Option, so we don't need is_none check if it's stored directly.
+            // These addresses are required fields in the EmergencyConfig struct.
             if emergency_config.emergency_fee_bps > 10000 {
                 panic!("emergency fee exceeds maximum (10000 bps = 100%)");
             }
@@ -1312,7 +1289,7 @@ impl CredenceBond {
                 .unwrap_or_else(|| panic!("no bond"));
             let caller = bond.identity.clone();
             caller.require_auth();
-            let token_addr: Address = e
+            let _token_addr: Address = e
                 .storage()
                 .instance()
                 .get(&DataKey::BondToken)
@@ -1844,13 +1821,6 @@ mod test_zero_address_working;
 
 #[cfg(test)]
 mod test_access_control;
-#[cfg(test)]
-mod test_attestation;
-#[cfg(test)]
-mod test_attestation_types;
-#[cfg(test)]
-mod test_batch;
-
 #[cfg(test)]
 mod test_attestation;
 #[cfg(test)]

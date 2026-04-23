@@ -12,7 +12,6 @@
 //! Note: `DataKey::AttesterStake(verifier)` is kept in sync with the staked amount so that
 //! weighted attestations can use real stake.
 
-use soroban_sdk::token::TokenClient;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 use crate::safe_token;
@@ -260,7 +259,7 @@ pub fn withdraw_stake(e: &Env, verifier: &Address, amount: i128) -> VerifierInfo
     put_verifier_info(e, verifier, &info);
     weighted_attestation::set_attester_stake(e, verifier, info.stake);
 
-    let token: Address = e
+    let _token: Address = e
         .storage()
         .instance()
         .get(&DataKey::BondToken)
