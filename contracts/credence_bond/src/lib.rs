@@ -245,11 +245,6 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
 
         // Zero-address check
-        if treasury.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -373,11 +368,6 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
 
         // Zero-address check
-        if attester.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         let admin: Address = e
             .storage()
@@ -433,11 +423,6 @@ impl CredenceBond {
         stake_deposit: i128,
     ) -> verifier::VerifierInfo {
         // Zero-address check
-        if verifier_addr.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
-            panic!("ZeroAddress");
-        }
 
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {

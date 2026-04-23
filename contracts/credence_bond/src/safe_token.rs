@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_zero_address_validation() {
         let env = Env::default();
-        let zero_addr = Address::generate(&env);
+        let _zero_addr = Address::generate(&env);
 
         // This would panic in a real scenario with actual zero address
         // validate_token_address(&zero_addr);
