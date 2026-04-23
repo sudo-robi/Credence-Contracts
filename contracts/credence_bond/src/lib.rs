@@ -29,6 +29,7 @@ mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
+pub mod status_snapshot;
 pub mod tiered_bond;
 mod token_integration;
 pub mod types;
@@ -358,6 +359,14 @@ impl CredenceBond {
 
     pub fn get_emergency_config(e: Env) -> emergency::EmergencyConfig {
         emergency::get_config(&e)
+    }
+
+    /// Return a stable, backend-friendly snapshot of the current bond status.
+    ///
+    /// Read-only. Includes tier, cooldown remaining, emergency mode, and
+    /// available balance. Safe to call at any time after bond creation.
+    pub fn get_bond_status_snapshot(e: Env) -> status_snapshot::BondStatusSnapshot {
+        status_snapshot::get_bond_status_snapshot(&e)
     }
     pub fn get_latest_emergency_record_id(e: Env) -> u64 {
         emergency::latest_record_id(&e)
@@ -2020,6 +2029,8 @@ mod test_rolling_bond;
 mod test_same_ledger_liquidation_guard;
 #[cfg(test)]
 mod test_slashing;
+#[cfg(test)]
+mod test_status_snapshot;
 #[cfg(test)]
 mod test_tiered_bond;
 #[cfg(test)]
