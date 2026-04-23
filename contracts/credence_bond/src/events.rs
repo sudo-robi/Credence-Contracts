@@ -3,7 +3,7 @@ use soroban_sdk::{Address, Env, Symbol};
 /// Emitted when a new bond is created.
 ///
 /// # Topics (Indexed)
-/// * `Symbol` - "bond_created_v2" 
+/// * `Symbol` - "bond_created_v2"
 /// * `Address` - The identity owning the bond
 /// * `i128` - The initial bonded amount (indexed for amount-based queries)
 /// * `u64` - The bond start timestamp (indexed for time-based queries)
@@ -21,12 +21,14 @@ pub fn emit_bond_created_v2(
     start_timestamp: u64,
 ) {
     let topics = (
-        Symbol::new(e, "bond_created_v2"), 
+        Symbol::new(e, "bond_created_v2"),
         identity.clone(),
         amount,
         start_timestamp,
     );
-    let end_timestamp = start_timestamp.checked_add(duration).expect("timestamp overflow");
+    let end_timestamp = start_timestamp
+        .checked_add(duration)
+        .expect("timestamp overflow");
     let data = (duration, is_rolling, end_timestamp);
     e.events().publish(topics, data);
 }
@@ -41,7 +43,7 @@ pub fn emit_bond_created_v2(
 /// * `i128` - The initial bonded amount
 /// * `u64` - The duration of the bond in seconds
 /// * `bool` - Whether the bond is rolling
-/// 
+///
 /// @deprecated Use emit_bond_created_v2 for better indexing
 pub fn emit_bond_created(
     e: &Env,
@@ -77,7 +79,7 @@ pub fn emit_bond_increased_v2(
     new_tier: crate::BondTier,
 ) {
     let topics = (
-        Symbol::new(e, "bond_increased_v2"), 
+        Symbol::new(e, "bond_increased_v2"),
         identity.clone(),
         added_amount,
         new_total,
@@ -96,7 +98,7 @@ pub fn emit_bond_increased_v2(
 /// # Data
 /// * `i128` - The additional amount added
 /// * `i128` - The new total bonded amount
-/// 
+///
 /// @deprecated Use emit_bond_increased_v2 for better indexing
 pub fn emit_bond_increased(e: &Env, identity: &Address, added_amount: i128, new_total: i128) {
     let topics = (Symbol::new(e, "bond_increased"), identity.clone());
@@ -126,7 +128,7 @@ pub fn emit_bond_withdrawn_v2(
     penalty_amount: i128,
 ) {
     let topics = (
-        Symbol::new(e, "bond_withdrawn_v2"), 
+        Symbol::new(e, "bond_withdrawn_v2"),
         identity.clone(),
         amount_withdrawn,
         remaining,
@@ -145,7 +147,7 @@ pub fn emit_bond_withdrawn_v2(
 /// # Data
 /// * `i128` - The amount withdrawn
 /// * `i128` - The remaining bonded amount
-/// 
+///
 /// @deprecated Use emit_bond_withdrawn_v2 for better indexing
 pub fn emit_bond_withdrawn(e: &Env, identity: &Address, amount_withdrawn: i128, remaining: i128) {
     let topics = (Symbol::new(e, "bond_withdrawn"), identity.clone());
@@ -177,7 +179,7 @@ pub fn emit_bond_slashed_v2(
     is_full_slash: bool,
 ) {
     let topics = (
-        Symbol::new(e, "bond_slashed_v2"), 
+        Symbol::new(e, "bond_slashed_v2"),
         identity.clone(),
         slash_amount,
         total_slashed,
@@ -197,7 +199,7 @@ pub fn emit_bond_slashed_v2(
 /// # Data
 /// * `i128` - The amount slashed in this event
 /// * `i128` - The new total slashed amount for this bond
-/// 
+///
 /// @deprecated Use emit_bond_slashed_v2 for better indexing
 pub fn emit_bond_slashed(e: &Env, identity: &Address, slash_amount: i128, total_slashed: i128) {
     let topics = (Symbol::new(e, "bond_slashed"), identity.clone());

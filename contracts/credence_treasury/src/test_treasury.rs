@@ -85,17 +85,17 @@ fn test_rescue_native_success() {
     let e = Env::default();
     let (client, admin) = setup(&e);
     let recipient = Address::generate(&e);
-    
+
     // Add some treasury balance first
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
-    
+
     // Simulate excess native balance (e.g., from accidental transfers)
     // In a real test environment, you'd need to mock the ledger balance
     // For now, we test the authorization and basic logic
-    
+
     // Test rescue with valid parameters
     client.rescue_native(&admin, &recipient, &500);
-    
+
     // Verify rescue event was emitted (would need to check events in real test)
 }
 
@@ -106,7 +106,7 @@ fn test_rescue_native_unauthorized() {
     let (client, admin) = setup(&e);
     let recipient = Address::generate(&e);
     let unauthorized = Address::generate(&e);
-    
+
     // Try rescue with unauthorized caller
     client.rescue_native(&unauthorized, &recipient, &500);
 }
@@ -118,7 +118,7 @@ fn test_rescue_native_unauthorized() {
 //     let e = Env::default();
 //     let (client, admin) = setup(&e);
 //     let zero_address = Address::generate(&e);
-//     
+//
 //     // Try rescue with zero address
 //     client.rescue_native(&admin, &zero_address, &500);
 // }
@@ -129,7 +129,7 @@ fn test_rescue_native_zero_amount() {
     let e = Env::default();
     let (client, admin) = setup(&e);
     let recipient = Address::generate(&e);
-    
+
     // Try rescue with zero amount
     client.rescue_native(&admin, &recipient, &0);
 }
@@ -140,10 +140,10 @@ fn test_rescue_native_exceeds_available() {
     let e = Env::default();
     let (client, admin) = setup(&e);
     let recipient = Address::generate(&e);
-    
+
     // Add some treasury balance
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
-    
+
     // Try to rescue more than available (assuming no excess native balance)
     client.rescue_native(&admin, &recipient, &2000);
 }

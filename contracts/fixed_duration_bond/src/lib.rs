@@ -36,6 +36,11 @@ pub const MAX_FEE_BPS: u32 = 1000;
 /// Default staleness window for oracle answers (seconds) when no per-asset
 /// override is configured. Default to 1 hour.
 pub const DEFAULT_MAX_STALENESS: u64 = 3600;
+/// Minimum allowed fixed-duration bond lock period (seconds).
+pub const MIN_BOND_DURATION_SECS: u64 = 1;
+/// Maximum allowed fixed-duration bond lock period (seconds).
+/// Bound to one year to avoid unreasonably long locks.
+pub const MAX_BOND_DURATION_SECS: u64 = 365 * 86_400;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -78,14 +83,10 @@ fn apply_bps(amount: i128, bps: u32) -> (i128, i128) {
 
 /// Verify balance-delta for token transfer to reject fee-on-transfer tokens.
 /// Call before performing transfer_from to verify received amount.
-/// 
+///
 /// # Panics
 /// If balance increased by less than expected amount after transfer_from.
-fn verify_transfer_in(
-    token_client: &TokenClient,
-    contract: &Address,
-    expected_amount: i128,
-) {
+fn verify_transfer_in(token_client: &TokenClient, contract: &Address, expected_amount: i128) {
     let balance_before = token_client.balance(contract);
     let balance_after = token_client.balance(contract);
     let actual_received = balance_after
@@ -99,7 +100,7 @@ fn verify_transfer_in(
 
 /// Verify balance-delta for token transfer to reject fee-on-transfer tokens.
 /// Call after performing transfer to verify sent amount.
-/// 
+///
 /// # Panics
 /// If balance decreased by less than expected amount after transfer.
 fn verify_transfer_out(
@@ -264,10 +265,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlistEnabled, &enabled);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_allowlist_toggled"),),
-            (enabled,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_allowlist_toggled"),), (enabled,));
     }
 
     /// Allow a receiver address to receive protocol-controlled funds when the
@@ -277,10 +276,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlist(receiver.clone()), &true);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_allowed"),),
-            (receiver,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_allowed"),), (receiver,));
     }
 
     /// Revoke an allowed receiver.
@@ -289,10 +286,8 @@ impl FixedDurationBond {
         e.storage()
             .instance()
             .set(&DataKey::ReceiverAllowlist(receiver.clone()), &false);
-        e.events().publish(
-            (Symbol::new(&e, "receiver_revoked"),),
-            (receiver,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "receiver_revoked"),), (receiver,));
     }
 
     /// Collect all accrued creation fees to the admin or treasury.
@@ -315,10 +310,10 @@ impl FixedDurationBond {
 
         let token = get_token(&e);
         let contract = e.current_contract_address();
-        
+
         // Validate recipient to prevent transfers to invalid addresses
         validate_recipient(&recipient, &contract);
-        
+
         TokenClient::new(&e, &token).transfer(&contract, &recipient, &accrued);
 
         e.events().publish(
@@ -352,6 +347,16 @@ impl FixedDurationBond {
             .get(&DataKey::OracleSafety(asset.clone()))
             .unwrap_or_else(|| panic!("{}", ERR_ORACLE_SAFETY_NOT_SET));
         validate_oracle_answer(oracle_answer, &safety);
+        let now = e.ledger().timestamp();
+        let max_staleness = get_max_staleness(&e, &asset);
+        validate_oracle(
+            oracle_answer,
+            updated_at,
+            round_id,
+            answered_in_round,
+            max_staleness,
+            now,
+        );
         mul_i128(amount, oracle_answer, ERR_VALUATION_OVERFLOW)
     }
 
@@ -361,7 +366,7 @@ impl FixedDurationBond {
     ///
     /// Requirements:
     /// - `amount` > 0
-    /// - `duration_secs` > 0
+    /// - `duration_secs` is within `[MIN_BOND_DURATION_SECS, MAX_BOND_DURATION_SECS]`
     /// - No currently active bond for `owner`
     /// - Caller has approved the contract to spend `amount`
     ///
@@ -375,6 +380,9 @@ impl FixedDurationBond {
         }
         if duration_secs == 0 {
             panic!("{}", ERR_INVALID_DURATION);
+        }
+        if !(MIN_BOND_DURATION_SECS..=MAX_BOND_DURATION_SECS).contains(&duration_secs) {
+            panic!("{}", ERR_DURATION_OUT_OF_BOUNDS);
         }
 
         // Reject if owner already has an active bond.
@@ -400,7 +408,7 @@ impl FixedDurationBond {
 
         // Check balance before transfer to detect fee-on-transfer tokens
         let balance_before = token_client.balance(&contract);
-        
+
         token_client.transfer_from(&contract, &owner, &contract, &amount);
 
         // Verify balance increased by exactly the expected amount
@@ -500,7 +508,7 @@ impl FixedDurationBond {
 
         // Check balance before transfer to detect fee-on-transfer tokens
         let balance_before = token_client.balance(&contract);
-        
+
         token_client.transfer(&contract, &owner, &bond.amount);
 
         // Verify balance decreased by exactly the expected amount
