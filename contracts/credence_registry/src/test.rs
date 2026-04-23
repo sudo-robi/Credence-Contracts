@@ -486,8 +486,8 @@ fn test_registered_identities_list_length_matches_unique_registrations() {
 
 // -- Issue #181: Check token contract code size before registration
 
-    // This test is disabled as zero-address check was removed from the contract
-    // due to lack of support in this SDK version.
+// This test is disabled as zero-address check was removed from the contract
+// due to lack of support in this SDK version.
 
 #[test]
 fn test_register_valid_contract_should_succeed() {
