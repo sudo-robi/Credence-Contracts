@@ -1,4 +1,5 @@
 use soroban_sdk::{Address, Env, Symbol};
+use credence_errors::ContractError;
 
 use crate::DataKey;
 
@@ -30,7 +31,7 @@ pub fn is_paused(e: &Env) -> bool {
 
 pub fn require_not_paused(e: &Env) {
     if is_paused(e) {
-        panic!("contract is paused");
+        e.panic_with_error(ContractError::ContractPaused);
     }
 }
 

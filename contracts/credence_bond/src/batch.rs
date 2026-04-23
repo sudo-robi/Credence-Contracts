@@ -11,7 +11,7 @@
 //! - Comprehensive event emission
 //! - Per-identity bond support
 
-use crate::{tiered_bond, BondTier, DataKey, IdentityBond};
+use crate::{BondTier, DataKey, IdentityBond, tiered_bond};
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 /// Conservative upper bound to keep batch execution below Soroban budget limits.

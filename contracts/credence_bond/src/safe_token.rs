@@ -25,8 +25,8 @@ pub mod errors {
 }
 
 /// Validates a token address is not zero
-fn validate_token_address(token: &Address) {
-    if token.is_zero() {
+fn validate_token_address(e: &Env, token: &Address) {
+    if token.to_string() == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") {
         panic!("{}", errors::ZERO_ADDRESS);
     }
 }
@@ -41,7 +41,7 @@ fn validate_amount(amount: i128) {
 /// Gets the configured token address with validation
 pub fn get_token(e: &Env) -> Address {
     let token = crate::token_integration::get_token(e);
-    validate_token_address(&token);
+    validate_token_address(e, &token);
     token
 }
 
@@ -68,7 +68,7 @@ pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
         return;
     }
     
-    validate_token_address(recipient);
+    validate_token_address(e, recipient);
     
     let contract = e.current_contract_address();
     token_client(e).transfer(&contract, recipient, &amount);
@@ -92,7 +92,7 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
         return;
     }
     
-    validate_token_address(owner);
+    validate_token_address(e, owner);
     
     // Check allowance first
     let allowance = token_client(e).allowance(owner, &e.current_contract_address());
@@ -140,7 +140,7 @@ pub fn safe_require_allowance(e: &Env, owner: &Address, amount: i128) {
 /// * If approve fails
 pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
     validate_amount(amount);
-    validate_token_address(spender);
+    validate_token_address(e, spender);
     
     let token = get_token(e);
     let contract = e.current_contract_address();
@@ -164,7 +164,7 @@ pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
         return;
     }
     
-    validate_token_address(spender);
+    validate_token_address(e, spender);
     
     // For tokens that don't support increaseAllowance, fall back to approve
     let current_allowance = token_client(e).allowance(&e.current_contract_address(), spender);
@@ -188,7 +188,7 @@ pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
 /// * If operation fails
 pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
     validate_amount(amount);
-    validate_token_address(spender);
+    validate_token_address(e, spender);
     
     // Reset to 0 first
     safe_approve(e, spender, 0);

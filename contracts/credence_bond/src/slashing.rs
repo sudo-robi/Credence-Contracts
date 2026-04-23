@@ -161,7 +161,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         bond.slashed_amount,
         e.ledger().timestamp(),
         admin,
-        "Slashed by admin".to_string(),
+        soroban_sdk::String::from_str(e, "Slashed by admin"),
         bond.slashed_amount >= bond.bonded_amount,
     );
 
