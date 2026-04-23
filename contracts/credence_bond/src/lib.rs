@@ -793,6 +793,7 @@ impl CredenceBond {
     /// * If any required parameter is missing or invalid
     /// * If token configuration is incomplete
     /// * If risk parameters are out of acceptable ranges
+    #[allow(dead_code)]
     fn validate_bond_activation_parameters(
         e: &Env,
         amount: i128,
@@ -816,7 +817,7 @@ impl CredenceBond {
         }
 
         // 4. Validate fee configuration is set
-        let (treasury_opt, fee_bps) = fees::get_config(e);
+        let (treasury_opt, _fee_bps) = fees::get_config(e);
         if treasury_opt.is_none() {
             panic!("fee treasury not configured - cannot activate bond");
         }
@@ -1303,7 +1304,7 @@ impl CredenceBond {
                 .unwrap_or_else(|| panic!("no bond"));
             let caller = bond.identity.clone();
             caller.require_auth();
-            let token_addr: Address = e
+            let _token_addr: Address = e
                 .storage()
                 .instance()
                 .get(&DataKey::BondToken)

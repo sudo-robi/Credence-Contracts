@@ -69,6 +69,7 @@ pub fn emit_bond_created(
 /// # Data
 /// * `bool` - Whether this increase crossed a tier threshold
 /// * `crate::BondTier` - New bond tier after increase
+#[allow(dead_code)]
 pub fn emit_bond_increased_v2(
     e: &Env,
     identity: &Address,
@@ -100,6 +101,7 @@ pub fn emit_bond_increased_v2(
 /// * `i128` - The new total bonded amount
 ///
 /// @deprecated Use emit_bond_increased_v2 for better indexing
+#[allow(dead_code)]
 pub fn emit_bond_increased(e: &Env, identity: &Address, added_amount: i128, new_total: i128) {
     let topics = (Symbol::new(e, "bond_increased"), identity.clone());
     let data = (added_amount, new_total);
@@ -201,6 +203,7 @@ pub fn emit_bond_slashed_v2(
 /// * `i128` - The new total slashed amount for this bond
 ///
 /// @deprecated Use emit_bond_slashed_v2 for better indexing
+#[allow(dead_code)]
 pub fn emit_bond_slashed(e: &Env, identity: &Address, slash_amount: i128, total_slashed: i128) {
     let topics = (Symbol::new(e, "bond_slashed"), identity.clone());
     let data = (slash_amount, total_slashed);

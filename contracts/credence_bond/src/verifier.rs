@@ -259,7 +259,7 @@ pub fn withdraw_stake(e: &Env, verifier: &Address, amount: i128) -> VerifierInfo
     put_verifier_info(e, verifier, &info);
     weighted_attestation::set_attester_stake(e, verifier, info.stake);
 
-    let token: Address = e
+    let _token: Address = e
         .storage()
         .instance()
         .get(&DataKey::BondToken)

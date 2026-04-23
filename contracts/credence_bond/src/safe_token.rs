@@ -15,12 +15,17 @@ use soroban_sdk::{Address, Env};
 
 /// Error messages for token operations
 pub mod errors {
+    #[allow(dead_code)]
     pub const TOKEN_NOT_SET: &str = "token not configured";
     pub const INVALID_AMOUNT: &str = "amount must be non-negative";
     pub const INSUFFICIENT_ALLOWANCE: &str = "insufficient token allowance";
+    #[allow(dead_code)]
     pub const TRANSFER_FAILED: &str = "token transfer failed";
+    #[allow(dead_code)]
     pub const ALLOWANCE_FAILED: &str = "token allowance check failed";
+    #[allow(dead_code)]
     pub const APPROVE_FAILED: &str = "token approve failed";
+    #[allow(dead_code)]
     pub const ZERO_ADDRESS: &str = "token address cannot be zero";
 }
 
@@ -137,6 +142,7 @@ pub fn safe_require_allowance(e: &Env, owner: &Address, amount: i128) {
 /// * If token is not configured
 /// * If amount is negative
 /// * If approve fails
+#[allow(dead_code)]
 pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
     validate_amount(amount);
     validate_token_address(spender);
@@ -159,6 +165,7 @@ pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
 /// * If token is not configured
 /// * If amount is negative
 /// * If operation fails
+#[allow(dead_code)]
 pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
     validate_amount(added_value);
     if added_value == 0 {
@@ -188,6 +195,7 @@ pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
 /// * If token is not configured
 /// * If amount is negative
 /// * If operation fails
+#[allow(dead_code)]
 pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
     validate_amount(amount);
     validate_token_address(spender);

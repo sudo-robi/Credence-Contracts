@@ -28,6 +28,7 @@ use soroban_sdk::Address;
 /// Addresses in Soroban are validated by the framework through the auth system.
 /// The primary validation is that recipients should be able to receive tokens.
 /// This function provides explicit checking at transfer call sites.
+#[allow(dead_code)]
 pub fn validate_recipient(recipient: &Address, contract: &Address) {
     // Prevent self-transfers: the contract should not transfer tokens to itself
     // as this could cause accounting issues or be a sign of a logic error.
