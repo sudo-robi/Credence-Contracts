@@ -9,10 +9,6 @@ use crate::math;
 
 /// Storage key for emergency configuration.
 const KEY_EMERGENCY_CONFIG: &str = "emergency_config";
-/// Storage key for latest emergency withdrawal record id.
-const KEY_EMERGENCY_RECORD_SEQ: &str = "emergency_record_seq";
-/// Storage key for latest emergency mode transition id.
-const KEY_EMERGENCY_TRANSITION_SEQ: &str = "emergency_transition_seq";
 
 /// @notice Emergency mode configuration.
 #[contracttype]
@@ -48,6 +44,7 @@ pub struct EmergencyModeTransition {
     pub enabled: bool,
     pub approved_admin: Address,
     pub approved_governance: Address,
+    pub reason: Symbol,
     pub timestamp: u64,
 }
 
@@ -57,6 +54,8 @@ pub struct EmergencyModeTransition {
 pub enum EmergencyDataKey {
     Record(u64),
     Transition(u64),
+    RecordSeq,
+    TransitionSeq,
 }
 
 /// @notice Set emergency configuration.
@@ -99,7 +98,8 @@ pub fn get_config(e: &Env) -> EmergencyConfig {
 /// @param enabled New emergency mode status.
 /// @param admin Authorized administrator who initiated the change.
 /// @param governance Authorized governance address that approved the change.
-pub fn set_enabled(e: &Env, enabled: bool, admin: &Address, governance: &Address) {
+/// @param reason Reason for the state transition.
+pub fn set_enabled(e: &Env, enabled: bool, admin: &Address, governance: &Address, reason: Symbol) {
     let mut cfg = get_config(e);
     if cfg.enabled == enabled {
         return; // No change needed
@@ -110,12 +110,13 @@ pub fn set_enabled(e: &Env, enabled: bool, admin: &Address, governance: &Address
         .set(&Symbol::new(e, KEY_EMERGENCY_CONFIG), &cfg);
 
     // Record the transition
-    let transition_id = increment_seq(e, KEY_EMERGENCY_TRANSITION_SEQ);
+    let transition_id = increment_seq(e, EmergencyDataKey::TransitionSeq);
     let transition = EmergencyModeTransition {
         id: transition_id,
         enabled,
         approved_admin: admin.clone(),
         approved_governance: governance.clone(),
+        reason,
         timestamp: e.ledger().timestamp(),
     };
 
@@ -139,8 +140,8 @@ pub fn calculate_fee(amount: i128, fee_bps: u32) -> i128 {
 /// @notice Get latest record ID.
 pub fn latest_record_id(e: &Env) -> u64 {
     e.storage()
-        .instance()
-        .get(&Symbol::new(e, KEY_EMERGENCY_RECORD_SEQ))
+        .persistent()
+        .get(&EmergencyDataKey::RecordSeq)
         .unwrap_or(0)
 }
 
@@ -155,8 +156,8 @@ pub fn get_record(e: &Env, id: u64) -> EmergencyWithdrawalRecord {
 /// @notice Get latest transition ID.
 pub fn latest_transition_id(e: &Env) -> u64 {
     e.storage()
-        .instance()
-        .get(&Symbol::new(e, KEY_EMERGENCY_TRANSITION_SEQ))
+        .persistent()
+        .get(&EmergencyDataKey::TransitionSeq)
         .unwrap_or(0)
 }
 
@@ -181,7 +182,7 @@ pub fn store_record(
     approved_governance: Address,
     reason: Symbol,
 ) -> u64 {
-    let id = increment_seq(e, KEY_EMERGENCY_RECORD_SEQ);
+    let id = increment_seq(e, EmergencyDataKey::RecordSeq);
     let record = EmergencyWithdrawalRecord {
         id,
         identity,
@@ -202,18 +203,23 @@ pub fn store_record(
 }
 
 /// @notice Internal sequence incrementer.
-fn increment_seq(e: &Env, key: &str) -> u64 {
-    let key_sym = Symbol::new(e, key);
-    let seq: u64 = e.storage().instance().get(&key_sym).unwrap_or(0);
+fn increment_seq(e: &Env, key: EmergencyDataKey) -> u64 {
+    let seq: u64 = e.storage().persistent().get(&key).unwrap_or(0);
     let next = seq.checked_add(1).expect("sequence overflow");
-    e.storage().instance().set(&key_sym, &next);
+    e.storage().persistent().set(&key, &next);
     next
 }
 
-pub fn emit_emergency_mode_event(e: &Env, enabled: bool, admin: &Address, governance: &Address) {
+pub fn emit_emergency_mode_event(
+    e: &Env,
+    enabled: bool,
+    admin: &Address,
+    governance: &Address,
+    reason: &Symbol,
+) {
     e.events().publish(
         (Symbol::new(e, "emergency_mode_changed"),),
-        (enabled, admin.clone(), governance.clone()),
+        (enabled, admin.clone(), governance.clone(), reason.clone()),
     );
 }
 

@@ -277,10 +277,32 @@ impl CredenceBond {
             panic!("ZeroAddress");
         }
 
+        let old_cfg = e.storage().instance().get::<_, emergency::EmergencyConfig>(&Symbol::new(&e, "emergency_config"));
+        
+        // Always set config with requested params, but if it's the first time and enabled=true,
+        // we'll set it to false first then enable it via set_enabled to trigger audit trail.
+        let effective_enabled = if old_cfg.is_none() { false } else { old_cfg.as_ref().unwrap().enabled };
+        
+        emergency::set_config(&e, governance.clone(), treasury.clone(), emergency_fee_bps, effective_enabled);
+
+        if let Some(old) = old_cfg {
+            if old.enabled != enabled {
+                let reason = Symbol::new(&e, "ConfigUpdate");
+                emergency::set_enabled(&e, enabled, &admin, &governance, reason.clone());
+                emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance, &reason);
+            }
+        } else if enabled {
+            // First time setup and enabled=true requested
+            let reason = Symbol::new(&e, "InitialSetup");
+            emergency::set_enabled(&e, enabled, &admin, &governance, reason.clone());
+            emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance, &reason);
+        }
+
+        // Final sync of config in case set_enabled was not called or we need to update other params
         emergency::set_config(&e, governance, treasury, emergency_fee_bps, enabled);
     }
 
-    pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool) {
+    pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool, reason: Symbol) {
         Self::require_admin_internal(&e, &admin);
         let cfg = emergency::get_config(&e);
         if governance != cfg.governance {
@@ -288,8 +310,8 @@ impl CredenceBond {
         }
         admin.require_auth();
         governance.require_auth();
-        emergency::set_enabled(&e, enabled, &admin, &governance);
-        emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance);
+        emergency::set_enabled(&e, enabled, &admin, &governance, reason.clone());
+        emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance, &reason);
     }
 
     pub fn emergency_withdraw(
