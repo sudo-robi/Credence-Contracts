@@ -623,6 +623,27 @@ fn test_parameter_change_event_emitted_on_update() {
 }
 
 #[test]
+fn test_parameter_update_v2_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_protocol_fee_bps(&admin, &200);
+
+    let events = e.events().all();
+    let last = events.iter().rev().next().unwrap();
+    
+    // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
+    let topics = last.1;
+    assert_eq!(topics.get(0).unwrap(), Symbol::new(&e, "param_updated").into());
+    assert_eq!(topics.get(1).unwrap(), symbol_short!("fee_prot").into());
+    
+    // Verify Data: (old_value, new_value)
+    let (old_val, new_val): (i128, i128) = last.2.into_val(&e);
+    assert_eq!(old_val, 50); // Default value
+    assert_eq!(new_val, 200);
+}
+
+#[test]
 fn test_event_contains_old_and_new_values() {
     let e = Env::default();
     let (client, admin) = setup(&e);
