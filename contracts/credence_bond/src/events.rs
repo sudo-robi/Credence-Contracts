@@ -321,3 +321,31 @@ pub fn emit_upgrade_executed(
     let data = (new_implementation.clone(), proposal_id);
     e.events().publish(topics, data);
 }
+
+pub fn emit_admin_transfer_started(e: &Env, admin: &Address, new_admin: &Address) {
+    e.events().publish(
+        (Symbol::new(e, "admin_transfer_started"), admin.clone()),
+        new_admin.clone(),
+    );
+}
+
+pub fn emit_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    e.events().publish(
+        (Symbol::new(e, "admin_transfer_completed"), old_admin.clone()),
+        new_admin.clone(),
+    );
+}
+
+pub fn emit_upgrade_admin_transfer_started(e: &Env, admin: &Address, new_admin: &Address) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_admin_transfer_started"), admin.clone()),
+        new_admin.clone(),
+    );
+}
+
+pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    e.events().publish(
+        (Symbol::new(e, "upgrade_admin_transfer_completed"), old_admin.clone()),
+        new_admin.clone(),
+    );
+}
