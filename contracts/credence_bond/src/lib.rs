@@ -691,10 +691,16 @@ impl CredenceBond {
         e.storage().instance().set(&subject_key, &attestations);
         verifier::record_attestation_issued(&e, &attester, weight);
 
-        // Add verifier reward claim (base reward + weight bonus)
-        let base_reward = 1000i128; // Base reward for attestation
-        let weight_bonus = (weight as i128) * 100; // Bonus based on weight
-        let total_reward = base_reward + weight_bonus;
+        // Add verifier reward claim (base reward + weight bonus).
+        // Both operations use checked arithmetic: weight is u32 (max 1_000_000)
+        // so weight_bonus fits in i128, but we guard against any future limit change.
+        let base_reward = 1000i128;
+        let weight_bonus = (weight as i128)
+            .checked_mul(100)
+            .expect("reward weight_bonus overflow");
+        let total_reward = base_reward
+            .checked_add(weight_bonus)
+            .expect("reward total overflow");
 
         claims::add_pending_claim(
             &e,
