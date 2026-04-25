@@ -1122,6 +1122,19 @@ impl CredenceBond {
         token_integration::transfer_from_contract(&e, &bond.identity, amount);
         Self::release_lock(&e);
 
+        // INTERACTIONS: external calls after state is committed.
+        // Invoke callback so observers are notified; reentrancy is blocked by the held lock.
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_withdraw");
+            let args: Vec<Val> = Vec::from_array(&e, [amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
+        // Token transfer is the final external call after all state is settled.
+        token_integration::transfer_from_contract(&e, &bond.identity, amount);
+
+        Self::release_lock(&e);
         bond
     }
 
@@ -1365,8 +1378,10 @@ impl CredenceBond {
         e.storage().instance().set(&key, &next);
     }
 
-    pub fn set_callback(e: Env, callback: Address) {
+    pub fn set_callback(e: Env, admin: Address, callback: Address) {
         pausable::require_not_paused(&e);
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
         e.storage()
             .instance()
             .set(&Self::callback_key(&e), &callback);
@@ -1814,6 +1829,16 @@ impl CredenceBond {
         e.storage().instance().set(&bond_key, &bond);
         e.storage().instance().remove(&req_key);
         cooldown::emit_cooldown_executed(&e, &requester, request.amount);
+
+        // INTERACTIONS: invoke callback after all state is committed.
+        // Reentrancy is blocked by the held lock.
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_withdraw");
+            let args: Vec<Val> = Vec::from_array(&e, [request.amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
         Self::release_lock(&e);
         bond
     }
