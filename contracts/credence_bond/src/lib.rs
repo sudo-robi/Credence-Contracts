@@ -4,8 +4,7 @@
 extern crate std;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val,
-    Vec,
+    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 pub mod access_control;
@@ -230,7 +229,8 @@ impl CredenceBond {
         }
 
         // Zero-address check
-        let zero_str = soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic!("ZeroAddress");
         }
@@ -261,8 +261,10 @@ impl CredenceBond {
         // Update admin
         e.storage().instance().set(&DataKey::Admin, &caller);
         // Also update the symbol-based admin key for consistency if used
-        e.storage().instance().set(&Symbol::new(&e, "admin"), &caller);
-        
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "admin"), &caller);
+
         // Clear pending admin
         e.storage().instance().remove(&DataKey::PndgAdmin);
 
@@ -342,13 +344,26 @@ impl CredenceBond {
             panic!("ZeroAddress");
         }
 
-        let old_cfg = e.storage().instance().get::<_, emergency::EmergencyConfig>(&Symbol::new(&e, "emergency_config"));
-        
+        let old_cfg = e
+            .storage()
+            .instance()
+            .get::<_, emergency::EmergencyConfig>(&Symbol::new(&e, "emergency_config"));
+
         // Always set config with requested params, but if it's the first time and enabled=true,
         // we'll set it to false first then enable it via set_enabled to trigger audit trail.
-        let effective_enabled = if old_cfg.is_none() { false } else { old_cfg.as_ref().unwrap().enabled };
-        
-        emergency::set_config(&e, governance.clone(), treasury.clone(), emergency_fee_bps, effective_enabled);
+        let effective_enabled = if old_cfg.is_none() {
+            false
+        } else {
+            old_cfg.as_ref().unwrap().enabled
+        };
+
+        emergency::set_config(
+            &e,
+            governance.clone(),
+            treasury.clone(),
+            emergency_fee_bps,
+            effective_enabled,
+        );
 
         if let Some(old) = old_cfg {
             if old.enabled != enabled {
@@ -1146,7 +1161,7 @@ impl CredenceBond {
             false,
             0,
         );
-        
+
         // External call after all state updates (CEI pattern)
         token_integration::transfer_from_contract(&e, &bond.identity, amount);
         Self::release_lock(&e);
@@ -2137,13 +2152,13 @@ mod test_attestation_types;
 #[cfg(test)]
 mod test_batch;
 #[cfg(test)]
+mod test_borrow_freeze;
+#[cfg(test)]
 mod test_cooldown;
 #[cfg(test)]
 mod test_create_bond;
 #[cfg(test)]
 mod test_decimals;
-#[cfg(test)]
-mod test_ownership_transfer;
 #[cfg(test)]
 mod test_duration_validation;
 #[cfg(test)]
@@ -2179,6 +2194,10 @@ mod test_math;
 #[cfg(test)]
 mod test_max_leverage;
 #[cfg(test)]
+mod test_ownership_transfer;
+#[cfg(test)]
+mod test_ownership_transfer;
+#[cfg(test)]
 mod test_parameters;
 #[cfg(test)]
 mod test_pausable;
@@ -2209,8 +2228,6 @@ mod test_verifier;
 #[cfg(test)]
 mod test_weighted_attestation;
 #[cfg(test)]
-mod test_borrow_freeze;
-#[cfg(test)]
 mod test_withdraw_bond;
 #[cfg(test)]
 mod test_zero_address;
@@ -2218,5 +2235,3 @@ mod test_zero_address;
 mod test_zero_address_working;
 #[cfg(test)]
 mod token_integration_test;
-#[cfg(test)]
-mod test_ownership_transfer;

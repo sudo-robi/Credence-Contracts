@@ -5,9 +5,9 @@ use crate::{
     },
     CredenceBond, CredenceBondClient,
 };
-use std::panic::AssertUnwindSafe;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, Vec};
+use std::panic::AssertUnwindSafe;
 
 // Helper: register contract + admin, return (client, admin, contract_id).
 fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {

@@ -322,9 +322,8 @@ pub fn emit_upgrade_executed(
     e.events().publish(topics, data);
 }
 
-
 /// Emitted when a protocol parameter is updated.
-/// 
+///
 /// # Topics (Indexed)
 /// * `Symbol` - "param_updated"
 /// * `Symbol` - Parameter Key (e.g., "leverage")
@@ -342,6 +341,11 @@ pub fn emit_parameter_updated(
     old_value: i128,
     new_value: i128,
 ) {
-    let topics = (Symbol::new(e, "param_updated"), key, category, admin.clone());
+    let topics = (
+        Symbol::new(e, "param_updated"),
+        key,
+        category,
+        admin.clone(),
+    );
     e.events().publish(topics, (old_value, new_value));
 }

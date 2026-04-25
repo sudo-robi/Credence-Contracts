@@ -631,12 +631,15 @@ fn test_parameter_update_v2_event_args() {
 
     let events = e.events().all();
     let last = events.iter().rev().next().unwrap();
-    
+
     // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
     let topics = last.1;
-    assert_eq!(topics.get(0).unwrap(), Symbol::new(&e, "param_updated").into());
+    assert_eq!(
+        topics.get(0).unwrap(),
+        Symbol::new(&e, "param_updated").into()
+    );
     assert_eq!(topics.get(1).unwrap(), symbol_short!("fee_prot").into());
-    
+
     // Verify Data: (old_value, new_value)
     let (old_val, new_val): (i128, i128) = last.2.into_val(&e);
     assert_eq!(old_val, 50); // Default value
