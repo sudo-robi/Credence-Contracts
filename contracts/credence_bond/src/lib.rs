@@ -127,13 +127,14 @@ pub enum DataKey {
     ClaimCounter,
     ClaimById(u64),
     BondToken,
-    Token,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
     // Upgrade authorization storage keys
     UpgradeAuth(Address),
     AuthorizedUpgraders,
     Implementation,
     UpgradeAdmin,
+    PndgAdmin,
+    PndgUpgrAdmin,
     UpgradeProposal(u64),
     NextProposalId,
     UpgradeHistory,
@@ -210,6 +211,63 @@ impl CredenceBond {
             .instance()
             .set(&Symbol::new(&e, "admin"), &admin);
         e.storage().instance().set(&DataKey::TotalSupply, &0_i128);
+
+        // Initialize upgrade authorization with the same admin
+        upgrade_auth::initialize_upgrade_auth(&e, &admin);
+    }
+
+    /// Propose a new admin for the contract (two-step transfer).
+    pub fn transfer_admin(e: Env, caller: Address, new_admin: Address) {
+        caller.require_auth();
+        Self::require_admin_internal(&e, &caller);
+
+        if caller == new_admin {
+            panic!("new admin must be different from current admin");
+        }
+
+        // Zero-address check
+        let zero_str = soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        if new_admin.to_string() == zero_str {
+            panic!("ZeroAddress");
+        }
+
+        e.storage().instance().set(&DataKey::PndgAdmin, &new_admin);
+        events::emit_admin_transfer_started(&e, &caller, &new_admin);
+    }
+
+    /// Accept the admin role (second step of transfer).
+    pub fn accept_admin(e: Env, caller: Address) {
+        caller.require_auth();
+        let pending_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::PndgAdmin)
+            .unwrap_or_else(|| panic!("no pending admin"));
+
+        if caller != pending_admin {
+            panic!("only pending admin can accept the role");
+        }
+
+        let old_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("current admin not found"));
+
+        // Update admin
+        e.storage().instance().set(&DataKey::Admin, &caller);
+        // Also update the symbol-based admin key for consistency if used
+        e.storage().instance().set(&Symbol::new(&e, "admin"), &caller);
+        
+        // Clear pending admin
+        e.storage().instance().remove(&DataKey::PndgAdmin);
+
+        events::emit_admin_transfer_completed(&e, &old_admin, &caller);
+    }
+
+    /// Get the pending admin address.
+    pub fn get_pending_admin(e: Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::PndgAdmin)
     }
 
     /// Set the supply cap for the bond market. Only admin can call.
@@ -381,6 +439,25 @@ impl CredenceBond {
         emergency::get_record(&e, id)
     }
 
+    /// Propose a new upgrade admin (two-step transfer).
+    pub fn transfer_upgrade_admin(e: Env, admin: Address, new_admin: Address) {
+        upgrade_auth::transfer_upgrade_admin(&e, &admin, &new_admin);
+    }
+
+    /// Accept the upgrade admin role (second step of transfer).
+    pub fn accept_upgrade_admin(e: Env, caller: Address) {
+        upgrade_auth::accept_upgrade_admin(&e, &caller);
+    }
+
+    /// Get the pending upgrade admin address.
+    pub fn get_pending_upgrade_admin(e: Env) -> Option<Address> {
+        upgrade_auth::get_pending_upgrade_admin(&e)
+    }
+
+    /// Check if an address is an authorized upgrader.
+    pub fn is_authorized_upgrader(e: Env, address: Address) -> bool {
+        upgrade_auth::is_authorized_upgrader(&e, &address)
+    }
     /// Register an authorized attester (only admin can call).
     pub fn register_attester(e: Env, attester: Address) {
         pausable::require_not_paused(&e);
@@ -2008,6 +2085,8 @@ mod test_create_bond;
 #[cfg(test)]
 mod test_decimals;
 #[cfg(test)]
+mod test_ownership_transfer;
+#[cfg(test)]
 mod test_duration_validation;
 #[cfg(test)]
 mod test_early_exit_penalty;
@@ -2081,3 +2160,5 @@ mod test_zero_address;
 mod test_zero_address_working;
 #[cfg(test)]
 mod token_integration_test;
+#[cfg(test)]
+mod test_ownership_transfer;
