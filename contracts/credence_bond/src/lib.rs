@@ -1,7 +1,11 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
+    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val,
+    Vec,
 };
 
 pub mod access_control;
@@ -29,6 +33,7 @@ mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
+pub mod status_snapshot;
 pub mod tiered_bond;
 mod token_integration;
 pub mod types;
@@ -137,6 +142,8 @@ pub enum DataKey {
     SupplyCap,
     TotalSupply,
     LastCollateralIncreaseLedger,
+    // Borrow freeze
+    BorrowFrozen,
 }
 
 #[contract]
@@ -417,6 +424,14 @@ impl CredenceBond {
     pub fn get_emergency_config(e: Env) -> emergency::EmergencyConfig {
         emergency::get_config(&e)
     }
+
+    /// Return a stable, backend-friendly snapshot of the current bond status.
+    ///
+    /// Read-only. Includes tier, cooldown remaining, emergency mode, and
+    /// available balance. Safe to call at any time after bond creation.
+    pub fn get_bond_status_snapshot(e: Env) -> status_snapshot::BondStatusSnapshot {
+        status_snapshot::get_bond_status_snapshot(&e)
+    }
     pub fn get_latest_emergency_record_id(e: Env) -> u64 {
         emergency::latest_record_id(&e)
     }
@@ -567,6 +582,7 @@ impl CredenceBond {
 
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
         pausable::require_not_paused(&e);
+        parameters::require_not_borrow_frozen(&e);
         validation::validate_bond_amount(amount);
         validation::validate_bond_duration(duration);
         leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
@@ -593,6 +609,7 @@ impl CredenceBond {
         validation::validate_bond_duration(duration);
 
         pausable::require_not_paused(&e);
+        parameters::require_not_borrow_frozen(&e);
         identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
@@ -768,10 +785,16 @@ impl CredenceBond {
         e.storage().instance().set(&subject_key, &attestations);
         verifier::record_attestation_issued(&e, &attester, weight);
 
-        // Add verifier reward claim (base reward + weight bonus)
-        let base_reward = 1000i128; // Base reward for attestation
-        let weight_bonus = (weight as i128) * 100; // Bonus based on weight
-        let total_reward = base_reward + weight_bonus;
+        // Add verifier reward claim (base reward + weight bonus).
+        // Both operations use checked arithmetic: weight is u32 (max 1_000_000)
+        // so weight_bonus fits in i128, but we guard against any future limit change.
+        let base_reward = 1000i128;
+        let weight_bonus = (weight as i128)
+            .checked_mul(100)
+            .expect("reward weight_bonus overflow");
+        let total_reward = base_reward
+            .checked_add(weight_bonus)
+            .expect("reward total overflow");
 
         claims::add_pending_claim(
             &e,
@@ -1020,6 +1043,7 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
         // Ensure bond is active before allowing withdrawal
         Self::require_active_bond(&e);
+        Self::acquire_lock(&e);
 
         let key = DataKey::Bond;
         let mut bond = e
@@ -1062,7 +1086,6 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("insufficient balance for withdrawal");
         }
-        token_integration::transfer_from_contract(&e, &bond.identity, amount);
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -1094,6 +1117,10 @@ impl CredenceBond {
             false,
             0,
         );
+        
+        // External call after all state updates (CEI pattern)
+        token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        Self::release_lock(&e);
 
         bond
     }
@@ -1136,33 +1163,6 @@ impl CredenceBond {
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
 
-        // Calculate net amount and transfer to user
-        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
-        token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
-
-        // Instead of transferring penalty to treasury immediately,
-        // add a potential penalty refund claim for good behavior
-        if penalty > 0 {
-            // Transfer penalty to treasury (still push-based for treasury)
-            token_integration::transfer_from_contract(&e, &treasury, penalty);
-
-            // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
-            let refund_amount = penalty / 2;
-            if refund_amount > 0 {
-                // Get next penalty ID for tracking
-                let penalty_id = Self::get_next_penalty_id(&e);
-
-                claims::add_pending_claim(
-                    &e,
-                    &bond.identity,
-                    claims::ClaimType::PenaltyRefund,
-                    refund_amount,
-                    penalty_id,
-                    Some(Symbol::new(&e, "early_exit_refund")),
-                );
-            }
-        }
-
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -1196,6 +1196,32 @@ impl CredenceBond {
             penalty,
         );
 
+        // Calculate net amount and transfer to user (after state updates - CEI pattern)
+        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
+        token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
+
+        // Transfer penalty to treasury (after state updates - CEI pattern)
+        if penalty > 0 {
+            token_integration::transfer_from_contract(&e, &treasury, penalty);
+
+            // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
+            let refund_amount = penalty / 2;
+            if refund_amount > 0 {
+                // Get next penalty ID for tracking
+                let penalty_id = Self::get_next_penalty_id(&e);
+
+                claims::add_pending_claim(
+                    &e,
+                    &bond.identity,
+                    claims::ClaimType::PenaltyRefund,
+                    refund_amount,
+                    penalty_id,
+                    Some(Symbol::new(&e, "early_exit_refund")),
+                );
+            }
+        }
+
+        Self::release_lock(&e);
         bond
     }
 
@@ -1380,6 +1406,7 @@ impl CredenceBond {
 
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
         pausable::require_not_paused(&e);
+        parameters::require_not_borrow_frozen(&e);
         if amount <= 0 {
             panic!("amount must be positive");
         }
@@ -1547,6 +1574,18 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
         admin.require_auth();
         parameters::set_max_leverage(&e, &admin, value)
+    }
+
+    /// Returns whether new bond creation and top-ups are currently frozen.
+    pub fn is_borrow_frozen(e: Env) -> bool {
+        parameters::is_borrow_frozen(&e)
+    }
+
+    /// Freeze or unfreeze new bond creation and top-ups. Governance (admin) only.
+    /// Repayments and withdrawals are unaffected.
+    pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
+        pausable::require_not_paused(&e);
+        parameters::set_borrow_frozen(&e, &admin, frozen)
     }
 
     pub fn withdraw_bond_full(e: Env, identity: Address) -> i128 {
@@ -2100,6 +2139,8 @@ mod test_same_ledger_liquidation_guard;
 #[cfg(test)]
 mod test_slashing;
 #[cfg(test)]
+mod test_status_snapshot;
+#[cfg(test)]
 mod test_tiered_bond;
 #[cfg(test)]
 mod test_upgrade_auth;
@@ -2109,6 +2150,8 @@ mod test_validation;
 mod test_verifier;
 #[cfg(test)]
 mod test_weighted_attestation;
+#[cfg(test)]
+mod test_borrow_freeze;
 #[cfg(test)]
 mod test_withdraw_bond;
 #[cfg(test)]

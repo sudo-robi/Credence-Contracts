@@ -322,30 +322,26 @@ pub fn emit_upgrade_executed(
     e.events().publish(topics, data);
 }
 
-pub fn emit_admin_transfer_started(e: &Env, admin: &Address, new_admin: &Address) {
-    e.events().publish(
-        (Symbol::new(e, "admin_transfer_started"), admin.clone()),
-        new_admin.clone(),
-    );
-}
 
-pub fn emit_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
-    e.events().publish(
-        (Symbol::new(e, "admin_transfer_completed"), old_admin.clone()),
-        new_admin.clone(),
-    );
-}
-
-pub fn emit_upgrade_admin_transfer_started(e: &Env, admin: &Address, new_admin: &Address) {
-    e.events().publish(
-        (Symbol::new(e, "upgrade_admin_transfer_started"), admin.clone()),
-        new_admin.clone(),
-    );
-}
-
-pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
-    e.events().publish(
-        (Symbol::new(e, "upgrade_admin_transfer_completed"), old_admin.clone()),
-        new_admin.clone(),
-    );
+/// Emitted when a protocol parameter is updated.
+/// 
+/// # Topics (Indexed)
+/// * `Symbol` - "param_updated"
+/// * `Symbol` - Parameter Key (e.g., "leverage")
+/// * `Symbol` - Category (e.g., "risk")
+/// * `Address` - Admin who performed the update
+///
+/// # Data
+/// * `i128` - Old value
+/// * `i128` - New value
+pub fn emit_parameter_updated(
+    e: &Env,
+    key: Symbol,
+    category: Symbol,
+    admin: &Address,
+    old_value: i128,
+    new_value: i128,
+) {
+    let topics = (Symbol::new(e, "param_updated"), key, category, admin.clone());
+    e.events().publish(topics, (old_value, new_value));
 }
