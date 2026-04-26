@@ -62,15 +62,10 @@ impl Attestation {
     /// * `data` - The attestation data to validate
     ///
     /// # Errors
-    /// Panics if:
-    /// * `data` is empty
-    /// * `data` exceeds `MAX_ATTESTATION_DATA_LENGTH`
+    /// Panics if `data` exceeds `MAX_ATTESTATION_DATA_LENGTH`.
     #[inline]
     pub fn validate_data(data: &String) {
         let len = data.len();
-        if len == 0 {
-            panic!("attestation data cannot be empty");
-        }
         if len as u32 > MAX_ATTESTATION_DATA_LENGTH {
             panic!("attestation data exceeds maximum length");
         }
