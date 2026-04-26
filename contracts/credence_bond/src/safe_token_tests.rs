@@ -1,6 +1,10 @@
 // Making sure our token helpers don't blow up in unexpected ways
 // Tests all the edge cases: zero amounts, negative numbers, missing configs
 
+#![cfg(test)]
+
+extern crate std;
+
 use crate::safe_token::*;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env};

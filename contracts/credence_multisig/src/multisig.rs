@@ -5,7 +5,11 @@
 //! and execution at threshold. Can be used for any administrative action requiring
 //! multi-party approval.
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, String, Symbol, Vec};
+use credence_errors::ContractError;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, String, Symbol,
+    Vec,
+};
 
 /// Type of action that can be proposed and executed.
 #[contracttype]
@@ -86,6 +90,14 @@ pub enum DataKey {
     SignatureCount(u64),
     /// List of all signer addresses (for enumeration).
     SignerList,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
 }
 
 #[contract]
@@ -111,15 +123,23 @@ impl CredenceMultiSig {
         admin.require_auth();
 
         if signers.is_empty() {
-            panic!("signers list cannot be empty");
+            panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
         }
 
         let signer_count = signers.len();
         if threshold == 0 || threshold > signer_count {
-            panic!("invalid threshold: must be 1 <= threshold <= signer count");
+            panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
         }
 
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
         e.storage()
             .instance()
             .set(&DataKey::SignerCount, &signer_count);
@@ -154,6 +174,7 @@ impl CredenceMultiSig {
     /// # Events
     /// Emits `signer_added` event
     pub fn add_signer(e: Env, admin: Address, signer: Address) {
+        crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
         let already = e
@@ -163,7 +184,7 @@ impl CredenceMultiSig {
             .unwrap_or(false);
 
         if already {
-            panic!("signer already exists");
+            panic_with_error!(&e, ContractError::AlreadyActive);
         }
 
         e.storage()
@@ -175,7 +196,9 @@ impl CredenceMultiSig {
             .instance()
             .get(&DataKey::SignerCount)
             .unwrap_or(0);
-        let new_count = count.checked_add(1).expect("signer count overflow");
+        let new_count = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         e.storage()
             .instance()
             .set(&DataKey::SignerCount, &new_count);
@@ -209,6 +232,7 @@ impl CredenceMultiSig {
     /// # Events
     /// Emits `signer_removed` event
     pub fn remove_signer(e: Env, admin: Address, signer: Address) {
+        crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
         let exists = e
@@ -218,7 +242,7 @@ impl CredenceMultiSig {
             .unwrap_or(false);
 
         if !exists {
-            panic!("signer does not exist");
+            panic_with_error!(&e, ContractError::NotSigner);
         }
 
         let count: u32 = e
@@ -228,7 +252,7 @@ impl CredenceMultiSig {
             .unwrap_or(1);
 
         if count <= 1 {
-            panic!("cannot remove last signer");
+            panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
         e.storage()
@@ -278,6 +302,7 @@ impl CredenceMultiSig {
     /// # Events
     /// Emits `threshold_updated` event
     pub fn set_threshold(e: Env, admin: Address, threshold: u32) {
+        crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
         let count: u32 = e
@@ -287,7 +312,7 @@ impl CredenceMultiSig {
             .unwrap_or(0);
 
         if threshold == 0 || threshold > count {
-            panic!("invalid threshold: must be 1 <= threshold <= signer count");
+            panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
         }
 
         e.storage().instance().set(&DataKey::Threshold, &threshold);
@@ -326,12 +351,13 @@ impl CredenceMultiSig {
         expires_at: u64,
         metadata: Option<String>,
     ) -> u64 {
+        crate::pausable::require_not_paused(&e);
         proposer.require_auth();
 
         Self::require_signer(&e, &proposer);
 
         if description.len() == 0 {
-            panic!("description cannot be empty");
+            panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
         let id: u64 = e
@@ -339,7 +365,9 @@ impl CredenceMultiSig {
             .instance()
             .get(&DataKey::ProposalCounter)
             .unwrap_or(0);
-        let next_id = id.checked_add(1).expect("proposal counter overflow");
+        let next_id = id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &next_id);
@@ -389,6 +417,7 @@ impl CredenceMultiSig {
     /// # Events
     /// Emits `proposal_signed` event
     pub fn sign_proposal(e: Env, signer: Address, proposal_id: u64) {
+        crate::pausable::require_not_paused(&e);
         signer.require_auth();
 
         Self::require_signer(&e, &signer);
@@ -397,14 +426,14 @@ impl CredenceMultiSig {
             .storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
-            .unwrap_or_else(|| panic!("proposal not found"));
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if proposal.status != ProposalStatus::Pending {
-            panic!("proposal is not pending");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
-            panic!("proposal has expired");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         let already_signed = e
@@ -414,7 +443,7 @@ impl CredenceMultiSig {
             .unwrap_or(false);
 
         if already_signed {
-            panic!("already signed");
+            panic_with_error!(&e, ContractError::AlreadyActive);
         }
 
         e.storage()
@@ -426,7 +455,9 @@ impl CredenceMultiSig {
             .instance()
             .get(&DataKey::SignatureCount(proposal_id))
             .unwrap_or(0);
-        let new_count = count.checked_add(1).expect("signature count overflow");
+        let new_count = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         e.storage()
             .instance()
             .set(&DataKey::SignatureCount(proposal_id), &new_count);
@@ -457,19 +488,20 @@ impl CredenceMultiSig {
     /// or perform the action after this succeeds. For security, actual
     /// execution logic should be implemented by the calling contract.
     pub fn execute_proposal(e: Env, proposal_id: u64) {
+        crate::pausable::require_not_paused(&e);
         let mut proposal: Proposal = e
             .storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
-            .unwrap_or_else(|| panic!("proposal not found"));
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if proposal.status != ProposalStatus::Pending {
-            panic!("proposal is not pending");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
             Self::expire_proposal(&e, proposal_id);
-            panic!("proposal has expired");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         let threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
@@ -480,7 +512,7 @@ impl CredenceMultiSig {
             .unwrap_or(0);
 
         if signatures < threshold {
-            panic!("insufficient signatures to execute");
+            panic_with_error!(&e, ContractError::InsufficientApprovals);
         }
 
         proposal.status = ProposalStatus::Executed;
@@ -508,16 +540,17 @@ impl CredenceMultiSig {
     /// # Events
     /// Emits `proposal_rejected` event
     pub fn reject_proposal(e: Env, admin: Address, proposal_id: u64) {
+        crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
         let mut proposal: Proposal = e
             .storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
-            .unwrap_or_else(|| panic!("proposal not found"));
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if proposal.status != ProposalStatus::Pending {
-            panic!("proposal is not pending");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         proposal.status = ProposalStatus::Rejected;
@@ -536,7 +569,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
-            .unwrap_or_else(|| panic!("proposal not found"))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound))
     }
 
     /// Get current signature count for a proposal.
@@ -589,7 +622,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 
     // ==================== Internal Helpers ====================
@@ -600,9 +633,9 @@ impl CredenceMultiSig {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
         if stored_admin != *admin {
-            panic!("not admin");
+            panic_with_error!(e, ContractError::NotAdmin);
         }
     }
 
@@ -613,7 +646,7 @@ impl CredenceMultiSig {
             .get(&DataKey::Signer(signer.clone()))
             .unwrap_or(false);
         if !is_signer {
-            panic!("not a signer");
+            panic_with_error!(e, ContractError::NotSigner);
         }
     }
 
@@ -622,7 +655,7 @@ impl CredenceMultiSig {
             .storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
-            .unwrap_or_else(|| panic!("proposal not found"));
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
         proposal.status = ProposalStatus::Expired;
         e.storage()
@@ -631,5 +664,33 @@ impl CredenceMultiSig {
 
         e.events()
             .publish((Symbol::new(&e, "proposal_expired"), proposal_id), ());
+    }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        crate::pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        crate::pausable::unpause(&e, &caller)
+    }
+
+    pub fn is_paused(e: Env) -> bool {
+        crate::pausable::is_paused(&e)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        crate::pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        crate::pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        crate::pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        crate::pausable::execute_pause_proposal(&e, proposal_id)
     }
 }

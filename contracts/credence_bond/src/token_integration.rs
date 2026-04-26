@@ -2,7 +2,7 @@
 //! Centralizes token configuration, allowance checks, and transfer operations.
 //! Rejects fee-on-transfer tokens where balance verification fails.
 
-use crate::safe_token;
+use crate::DataKey;
 use soroban_sdk::{Address, Env, String, Symbol};
 
 /// Stellar network passphrase label used for USDC mainnet references.
@@ -28,24 +28,12 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
         panic!("not admin");
     }
 
-    // Zero-address check using soroban_sdk::String comparison
-    let zero_addr_str = String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    if token.to_string() == zero_addr_str {
-        panic!("ZeroAddress");
-    }
-
-    e.storage().instance().set(&crate::DataKey::BondToken, token);
+    e.storage().instance().set(&DataKey::BondToken, token);
 }
 
 /// @notice Sets the USDC token contract and associated network label.
 /// @dev Network label is informational for auditing and can be "mainnet" or "testnet".
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
-    // Zero-address check
-    let zero_addr_str = String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    if token.to_string() == zero_addr_str {
-        panic!("ZeroAddress");
-    }
-
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
     {
@@ -76,7 +64,7 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 /// @notice Checks if owner has enough allowance for the contract to spend amount.
 /// @dev Uses safe allowance checking with proper error handling.
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
-    safe_token::safe_require_allowance(e, owner, amount);
+    crate::safe_token::safe_require_allowance(e, owner, amount);
 }
 
 /// @notice Transfers tokens from owner into the bond contract.
@@ -96,7 +84,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
     require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
-    let token = safe_token::token_client(e);
+    let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
@@ -107,7 +95,8 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     // Verify balance increased by exactly the expected amount
     // Rejects fee-on-transfer tokens where received < requested
     let balance_after = token.balance(&contract);
-    let actual_received = balance_after.checked_sub(balance_before)
+    let actual_received = balance_after
+        .checked_sub(balance_before)
         .expect("balance underflow");
 
     if actual_received != amount {
@@ -131,7 +120,7 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
-    let token = safe_token::token_client(e);
+    let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
@@ -142,10 +131,13 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     // Verify balance decreased by exactly the expected amount
     // Rejects fee-on-transfer tokens where sent != requested
     let balance_after = token.balance(&contract);
-    let actual_sent = balance_before.checked_sub(balance_after)
+    let actual_sent = balance_before
+        .checked_sub(balance_after)
         .expect("balance underflow");
 
     if actual_sent != amount {
         panic!("unsupported token: transfer amount mismatch (code 213)");
     }
 }
+
+

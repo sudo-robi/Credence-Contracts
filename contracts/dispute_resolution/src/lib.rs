@@ -19,8 +19,10 @@
 
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, Env,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address, Env,
 };
+
+pub mod pausable;
 
 // ─── TTL constants ────────────────────────────────────────────────────────────
 
@@ -39,12 +41,22 @@ const BUMP_TARGET: u32 = 518_400;
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
+    /// Contract administrator.
+    Admin,
     /// Global monotonically increasing dispute counter. Stored in `instance()`.
     DisputeCounter,
     /// Full dispute record keyed by its ID. Stored in `persistent()`.
     Dispute(u64),
     /// Boolean vote record keyed by (dispute_id, arbitrator). Stored in `persistent()`.
     Vote(u64, Address),
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
 }
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -78,42 +90,23 @@ pub enum Error {
     InsufficientStake = 7,
     InvalidDeadline = 8,
     TransferFailed = 9,
+    AlreadyInitialized = 10,
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
 
-#[contractevent]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DisputeCreated {
-    pub dispute_id: u64,
-    pub disputer: Address,
-    pub slash_request_id: u64,
-    pub stake: i128,
-    pub deadline: u64,
+// Event symbols for SDK 22.0 style event publishing
+fn dispute_created_symbol(e: &Env) -> Symbol {
+    Symbol::new(e, "dispute_created")
 }
-
-#[contractevent]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VoteCast {
-    pub dispute_id: u64,
-    pub arbitrator: Address,
-    pub favor_disputer: bool,
+fn vote_cast_symbol(e: &Env) -> Symbol {
+    Symbol::new(e, "vote_cast")
 }
-
-#[contractevent]
-#[derive(Clone, Debug, PartialEq)]
-pub struct DisputeResolved {
-    pub dispute_id: u64,
-    pub outcome: DisputeOutcome,
-    pub votes_for_disputer: u64,
-    pub votes_for_slasher: u64,
+fn dispute_resolved_symbol(e: &Env) -> Symbol {
+    Symbol::new(e, "dispute_resolved")
 }
-
-#[contractevent]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DisputeExpired {
-    pub dispute_id: u64,
-    pub expired_at: u64,
+fn dispute_expired_symbol(e: &Env) -> Symbol {
+    Symbol::new(e, "dispute_expired")
 }
 
 // ─── Data structures ──────────────────────────────────────────────────────────
@@ -150,6 +143,23 @@ pub struct DisputeContract;
 
 #[contractimpl]
 impl DisputeContract {
+    pub fn initialize(env: Env, admin: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseThreshold, &0_u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /// Read a `Dispute` from `persistent()` storage, bump its TTL, and return
@@ -174,6 +184,29 @@ impl DisputeContract {
             .extend_ttl(&key, BUMP_THRESHOLD, BUMP_TARGET);
     }
 
+    /// Require that `closer` explicitly authorizes and is allowed to close.
+    ///
+    /// A dispute may be closed by:
+    /// - the original disputer; or
+    /// - the contract admin (when initialized).
+    fn require_closer_auth(env: &Env, dispute: &Dispute, closer: &Address) -> Result<(), Error> {
+        closer.require_auth();
+
+        let is_disputer = closer == &dispute.disputer;
+        let is_admin = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Admin)
+            .map(|admin| admin == *closer)
+            .unwrap_or(false);
+
+        if !is_disputer && !is_admin {
+            return Err(Error::Unauthorized);
+        }
+
+        Ok(())
+    }
+
     // ── Public interface ──────────────────────────────────────────────────────
 
     /// Open a new dispute against a slash request.
@@ -192,6 +225,7 @@ impl DisputeContract {
         token: Address,
         resolution_deadline: u64,
     ) -> Result<u64, Error> {
+        pausable::require_not_paused(&env);
         disputer.require_auth();
 
         if stake < MIN_STAKE {
@@ -251,14 +285,10 @@ impl DisputeContract {
         };
         Self::save_dispute(&env, dispute_id, &dispute);
 
-        DisputeCreated {
-            dispute_id,
-            disputer,
-            slash_request_id,
-            stake,
-            deadline,
-        }
-        .publish(&env);
+        env.events().publish(
+            (dispute_created_symbol(&env),),
+            (dispute_id, disputer, slash_request_id, stake, deadline),
+        );
 
         Ok(dispute_id)
     }
@@ -268,7 +298,8 @@ impl DisputeContract {
     /// Panics with `"Dispute not found"` if the ID does not exist, preserving
     /// the original public API contract expected by callers and tests.
     pub fn get_dispute(env: &Env, dispute_id: u64) -> Dispute {
-        Self::load_dispute(env, dispute_id).expect("Dispute not found")
+        Self::load_dispute(env, dispute_id)
+            .unwrap_or_else(|_| panic_with_error!(env, Error::DisputeNotFound))
     }
 
     /// Cast an arbitrator vote on an open dispute.
@@ -284,6 +315,7 @@ impl DisputeContract {
         dispute_id: u64,
         favor_disputer: bool,
     ) -> Result<(), Error> {
+        pausable::require_not_paused(&env);
         arbitrator.require_auth();
 
         // Single persistent-storage read: load-or-error (replaces has() + get()).
@@ -317,12 +349,10 @@ impl DisputeContract {
         // Persist updated vote tallies back to the dispute record.
         Self::save_dispute(&env, dispute_id, &dispute);
 
-        VoteCast {
-            dispute_id,
-            arbitrator,
-            favor_disputer,
-        }
-        .publish(&env);
+        env.events().publish(
+            (vote_cast_symbol(&env),),
+            (dispute_id, arbitrator, favor_disputer),
+        );
 
         Ok(())
     }
@@ -335,10 +365,14 @@ impl DisputeContract {
     ///
     /// # Errors
     /// * `DisputeNotFound` — unknown `dispute_id`
+    /// * `Unauthorized` — `closer` is neither disputer nor admin
     /// * `DisputeNotOpen` — dispute is already resolved/expired
     /// * `DeadlineNotReached` — voting period is still active
-    pub fn resolve_dispute(env: Env, dispute_id: u64) -> Result<(), Error> {
+    pub fn resolve_dispute(env: Env, closer: Address, dispute_id: u64) -> Result<(), Error> {
+        pausable::require_not_paused(&env);
         let mut dispute = Self::load_dispute(&env, dispute_id)?;
+
+        Self::require_closer_auth(&env, &dispute, &closer)?;
 
         if dispute.status != DisputeStatus::Open {
             return Err(Error::DisputeNotOpen);
@@ -354,9 +388,9 @@ impl DisputeContract {
         let outcome = if dispute.votes_for_disputer > dispute.votes_for_slasher {
             // Verify balance delta when returning stake to disputer
             let balance_before = token_client.balance(&contract_address);
-            
+
             token_client.transfer(&contract_address, &dispute.disputer, &dispute.stake);
-            
+
             // Verify balance decreased by exactly the expected amount
             let balance_after = token_client.balance(&contract_address);
             let actual_sent = balance_before
@@ -377,13 +411,15 @@ impl DisputeContract {
 
         Self::save_dispute(&env, dispute_id, &dispute);
 
-        DisputeResolved {
-            dispute_id,
-            outcome,
-            votes_for_disputer: dispute.votes_for_disputer,
-            votes_for_slasher: dispute.votes_for_slasher,
-        }
-        .publish(&env);
+        env.events().publish(
+            (dispute_resolved_symbol(&env),),
+            (
+                dispute_id,
+                outcome,
+                dispute.votes_for_disputer,
+                dispute.votes_for_slasher,
+            ),
+        );
 
         Ok(())
     }
@@ -393,10 +429,14 @@ impl DisputeContract {
     ///
     /// # Errors
     /// * `DisputeNotFound` — unknown `dispute_id`
+    /// * `Unauthorized` — `closer` is neither disputer nor admin
     /// * `DisputeNotOpen` — dispute is already resolved/expired
     /// * `DeadlineNotReached` — deadline has not yet passed
-    pub fn expire_dispute(env: Env, dispute_id: u64) -> Result<(), Error> {
+    pub fn expire_dispute(env: Env, closer: Address, dispute_id: u64) -> Result<(), Error> {
+        pausable::require_not_paused(&env);
         let mut dispute = Self::load_dispute(&env, dispute_id)?;
+
+        Self::require_closer_auth(&env, &dispute, &closer)?;
 
         if dispute.status != DisputeStatus::Open {
             return Err(Error::DisputeNotOpen);
@@ -410,11 +450,9 @@ impl DisputeContract {
 
         Self::save_dispute(&env, dispute_id, &dispute);
 
-        DisputeExpired {
-            dispute_id,
-            expired_at: env.ledger().timestamp(),
-        }
-        .publish(&env);
+        let expired_at = env.ledger().timestamp();
+        env.events()
+            .publish((dispute_expired_symbol(&env),), (dispute_id, expired_at));
 
         Ok(())
     }
@@ -434,9 +472,39 @@ impl DisputeContract {
             .get(&DataKey::DisputeCounter)
             .unwrap_or(0)
     }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
 }
 
 #[cfg(test)]
 mod test;
 #[cfg(test)]
 mod test_gas;
+#[cfg(test)]
+mod test_pausable;

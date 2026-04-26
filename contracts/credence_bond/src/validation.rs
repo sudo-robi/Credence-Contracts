@@ -28,13 +28,14 @@ use soroban_sdk::Address;
 /// Addresses in Soroban are validated by the framework through the auth system.
 /// The primary validation is that recipients should be able to receive tokens.
 /// This function provides explicit checking at transfer call sites.
+#[allow(dead_code)]
 pub fn validate_recipient(recipient: &Address, contract: &Address) {
     // Prevent self-transfers: the contract should not transfer tokens to itself
     // as this could cause accounting issues or be a sign of a logic error.
     if recipient == contract {
         panic!("recipient cannot be the contract itself");
     }
-    
+
     // Note: In Soroban, addresses are validated through the auth system.
     // We don't need to check for "zero address" as that concept doesn't exist.
     // The require_auth() calls in the calling code provide the primary validation.
@@ -75,9 +76,44 @@ pub fn validate_bond_amount(amount: i128) {
     }
 }
 
+// Duration Validation Module
+//
+// Provides validation logic for bond durations including minimum and maximum limit
+// enforcement. All bond creations must pass duration validation before proceeding.
+//
+// Constraints:
+// - Minimum Duration: Bonds must have a duration of at least 1 day (86_400 seconds)
+//   to prevent trivially short bonds that offer no meaningful commitment.
+// - Maximum Duration: Bonds are capped at 365 days (31_536_000 seconds) to limit
+//   excessive lock-up risk and contract state lifetime.
+
+/// Minimum bond duration in seconds (1 day = 86_400 seconds).
+pub const MIN_BOND_DURATION: u64 = 86_400;
+
+/// Maximum bond duration in seconds (365 days = 31_536_000 seconds).
+pub const MAX_BOND_DURATION: u64 = 31_536_000;
+
+/// Validate that a bond duration falls within the allowed range.
+///
+/// # Arguments
+/// * `duration` - The bond duration in seconds to validate.
+///
+/// # Panics
+/// * `"bond duration too short: minimum is 86400 seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
+/// * `"bond duration too long: maximum is 31536000 seconds (365 days)"` if `duration` > `MAX_BOND_DURATION`
+pub fn validate_bond_duration(duration: u64) {
+    if duration < MIN_BOND_DURATION {
+        panic!("bond duration too short: minimum is 86400 seconds (1 day)");
+    }
+    if duration > MAX_BOND_DURATION {
+        panic!("bond duration too long: maximum is 31536000 seconds (365 days)");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env};
 
     #[test]
@@ -130,39 +166,5 @@ mod tests {
         let address = Address::generate(&env);
         // Should panic when recipient equals contract
         validate_recipient(&address, &address);
-    }
-}
-
-// Duration Validation Module
-//
-// Provides validation logic for bond durations including minimum and maximum limit
-// enforcement. All bond creations must pass duration validation before proceeding.
-//
-// Constraints:
-// - Minimum Duration: Bonds must have a duration of at least 1 day (86_400 seconds)
-//   to prevent trivially short bonds that offer no meaningful commitment.
-// - Maximum Duration: Bonds are capped at 365 days (31_536_000 seconds) to limit
-//   excessive lock-up risk and contract state lifetime.
-
-/// Minimum bond duration in seconds (1 day = 86_400 seconds).
-pub const MIN_BOND_DURATION: u64 = 86_400;
-
-/// Maximum bond duration in seconds (365 days = 31_536_000 seconds).
-pub const MAX_BOND_DURATION: u64 = 31_536_000;
-
-/// Validate that a bond duration falls within the allowed range.
-///
-/// # Arguments
-/// * `duration` - The bond duration in seconds to validate.
-///
-/// # Panics
-/// * `"bond duration too short: minimum is 86400 seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
-/// * `"bond duration too long: maximum is 31536000 seconds (365 days)"` if `duration` > `MAX_BOND_DURATION`
-pub fn validate_bond_duration(duration: u64) {
-    if duration < MIN_BOND_DURATION {
-        panic!("bond duration too short: minimum is 86400 seconds (1 day)");
-    }
-    if duration > MAX_BOND_DURATION {
-        panic!("bond duration too long: maximum is 31536000 seconds (365 days)");
     }
 }

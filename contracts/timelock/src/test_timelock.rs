@@ -38,7 +38,7 @@ fn test_initialize() {
 }
 
 #[test]
-#[should_panic(expected = "min_delay must be greater than zero")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_initialize_zero_delay() {
     let e = Env::default();
     let contract_id = e.register(Timelock, ());
@@ -97,7 +97,7 @@ fn test_queue_change_with_exact_min_delay_eta() {
 }
 
 #[test]
-#[should_panic(expected = "eta must satisfy min delay")]
+#[should_panic(expected = "Error(Contract, #107)")]
 fn test_queue_change_eta_too_early_fails() {
     let e = Env::default();
     let (client, admin, _gov) = setup_with_delay(&e, 10);
@@ -111,7 +111,27 @@ fn test_queue_change_eta_too_early_fails() {
 }
 
 #[test]
-#[should_panic(expected = "only admin can propose changes")]
+#[should_panic(expected = "Error(Contract, #107)")]
+fn test_execute_change_at_eta_minus_one_boundary_fails() {
+    let e = Env::default();
+    let (client, admin, _gov) = setup_with_delay(&e, 10);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let key = Symbol::new(&e, "fee_bps");
+    let id = client.queue_change(&admin, &key, &250, &1010);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1009;
+    });
+
+    client.execute_change(&id);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_propose_non_admin_fails() {
     let e = Env::default();
     let (client, _admin, _gov) = setup(&e);
@@ -188,7 +208,45 @@ fn test_execute_change_at_expiration_boundary() {
 }
 
 #[test]
-#[should_panic(expected = "execution window expired")]
+fn test_grace_window_is_inclusive_until_expires_at() {
+    let e = Env::default();
+    let (client, admin, _gov) = setup_with_delay(&e, 10);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let key_just_before_expiry = Symbol::new(&e, "fee_grace_1");
+    let eta = 1010;
+    let id_just_before_expiry = client.queue_change(&admin, &key_just_before_expiry, &250, &eta);
+    let change_just_before_expiry = client.get_change(&id_just_before_expiry);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = change_just_before_expiry.expires_at - 1;
+    });
+
+    client.execute_change(&id_just_before_expiry);
+    assert!(client.get_change(&id_just_before_expiry).executed);
+
+    let key_at_expiry = Symbol::new(&e, "fee_grace_2");
+    let second_proposal_time = 2000;
+    e.ledger().with_mut(|li| {
+        li.timestamp = second_proposal_time;
+    });
+    let id_at_expiry =
+        client.queue_change(&admin, &key_at_expiry, &300, &(second_proposal_time + 10));
+    let change_at_expiry = client.get_change(&id_at_expiry);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = change_at_expiry.expires_at;
+    });
+
+    client.execute_change(&id_at_expiry);
+    assert!(client.get_change(&id_at_expiry).executed);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #107)")]
 fn test_execute_change_after_expiration_fails() {
     let e = Env::default();
     let (client, admin, _gov) = setup_with_delay(&e, 10);
@@ -209,7 +267,7 @@ fn test_execute_change_after_expiration_fails() {
 }
 
 #[test]
-#[should_panic(expected = "timelock delay has not elapsed")]
+#[should_panic(expected = "Error(Contract, #107)")]
 fn test_execute_before_delay_fails() {
     let e = Env::default();
     let (client, admin, _gov) = setup(&e);
@@ -229,7 +287,7 @@ fn test_execute_before_delay_fails() {
 }
 
 #[test]
-#[should_panic(expected = "change already executed")]
+#[should_panic(expected = "Error(Contract, #604)")]
 fn test_execute_already_executed_fails() {
     let e = Env::default();
     let (client, admin, _gov) = setup(&e);
@@ -250,7 +308,7 @@ fn test_execute_already_executed_fails() {
 }
 
 #[test]
-#[should_panic(expected = "only admin can propose changes")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_execute_non_admin_fails() {
     let e = Env::default();
     let (client, _admin, _gov) = setup(&e);
@@ -278,7 +336,7 @@ fn test_cancel_change_by_governance() {
 }
 
 #[test]
-#[should_panic(expected = "only governance can cancel changes")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_cancel_by_non_governance_fails() {
     let e = Env::default();
     let (client, admin, _gov) = setup(&e);
@@ -291,7 +349,7 @@ fn test_cancel_by_non_governance_fails() {
 }
 
 #[test]
-#[should_panic(expected = "change has been cancelled")]
+#[should_panic(expected = "Error(Contract, #502)")]
 fn test_execute_cancelled_change_fails() {
     let e = Env::default();
     let (client, admin, gov) = setup(&e);
@@ -313,7 +371,7 @@ fn test_execute_cancelled_change_fails() {
 }
 
 #[test]
-#[should_panic(expected = "change already cancelled")]
+#[should_panic(expected = "Error(Contract, #502)")]
 fn test_cancel_already_cancelled_fails() {
     let e = Env::default();
     let (client, admin, gov) = setup(&e);
@@ -326,7 +384,7 @@ fn test_cancel_already_cancelled_fails() {
 }
 
 #[test]
-#[should_panic(expected = "change already executed")]
+#[should_panic(expected = "Error(Contract, #604)")]
 fn test_cancel_executed_change_fails() {
     let e = Env::default();
     let (client, admin, gov) = setup(&e);
@@ -361,7 +419,7 @@ fn test_update_min_delay() {
 }
 
 #[test]
-#[should_panic(expected = "min_delay must be greater than zero")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_update_min_delay_zero_fails() {
     let e = Env::default();
     let (client, _admin, _gov) = setup(&e);
@@ -413,9 +471,74 @@ fn test_multiple_pending_changes() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "change not found")]
+#[should_panic(expected = "Error(Contract, #603)")]
 fn test_get_change_not_found() {
     let e = Env::default();
     let (client, _admin, _gov) = setup(&e);
     let _ = client.get_change(&999);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn test_initialize_already_initialized_fails() {
+    let e = Env::default();
+    let (client, admin, governance) = setup(&e);
+    client.initialize(&admin, &governance, &86400);
+}
+
+#[test]
+fn test_execute_window_boundary_checks() {
+    let e = Env::default();
+    let (client, admin, _gov) = setup_with_delay(&e, 10);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let key = Symbol::new(&e, "test_param");
+    let id = client.propose_change(&admin, &key, &123);
+    let change = client.get_change(&id);
+    let eta = change.eta; // 1010
+    let expires = change.expires_at; // 1010 + 86400
+
+    // 1. Exactly at ETA should work
+    e.ledger().with_mut(|li| {
+        li.timestamp = eta;
+    });
+    client.execute_change(&id);
+    assert!(client.get_change(&id).executed);
+
+    // 2. Propose another one to test expiry boundary
+    let id2 = client.propose_change(&admin, &key, &456);
+    let change2 = client.get_change(&id2);
+
+    // Exactly at expires_at should work
+    e.ledger().with_mut(|li| {
+        li.timestamp = change2.expires_at;
+    });
+    client.execute_change(&id2);
+    assert!(client.get_change(&id2).executed);
+}
+
+#[test]
+fn test_cancel_expired_change() {
+    let e = Env::default();
+    let (client, admin, gov) = setup_with_delay(&e, 10);
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let key = Symbol::new(&e, "expired_param");
+    let id = client.propose_change(&admin, &key, &789);
+    let change = client.get_change(&id);
+
+    // Move time past expiration
+    e.ledger().with_mut(|li| {
+        li.timestamp = change.expires_at + 1;
+    });
+
+    // Cancelling should still work
+    client.cancel_change(&gov, &id);
+    assert!(client.get_change(&id).cancelled);
 }
