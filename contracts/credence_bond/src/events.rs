@@ -323,23 +323,21 @@ pub fn emit_upgrade_executed(
 }
 
 /// Emitted when an administrative transfer is initiated.
-pub fn emit_admin_transfer_started(
-    e: &Env,
-    current_admin: &Address,
-    pending_admin: &Address,
-) {
-    let topics = (Symbol::new(e, "admin_transfer_started"), current_admin.clone());
+pub fn emit_admin_transfer_started(e: &Env, current_admin: &Address, pending_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "admin_transfer_started"),
+        current_admin.clone(),
+    );
     let data = pending_admin.clone();
     e.events().publish(topics, data);
 }
 
 /// Emitted when an administrative transfer is completed.
-pub fn emit_admin_transfer_completed(
-    e: &Env,
-    old_admin: &Address,
-    new_admin: &Address,
-) {
-    let topics = (Symbol::new(e, "admin_transfer_completed"), old_admin.clone());
+pub fn emit_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "admin_transfer_completed"),
+        old_admin.clone(),
+    );
     let data = new_admin.clone();
     e.events().publish(topics, data);
 }
@@ -350,18 +348,20 @@ pub fn emit_upgrade_admin_transfer_started(
     current_admin: &Address,
     pending_upgrade_admin: &Address,
 ) {
-    let topics = (Symbol::new(e, "upgrade_admin_transfer_started"), current_admin.clone());
+    let topics = (
+        Symbol::new(e, "upgrade_admin_transfer_started"),
+        current_admin.clone(),
+    );
     let data = pending_upgrade_admin.clone();
     e.events().publish(topics, data);
 }
 
 /// Emitted when an upgrade admin transfer is completed.
-pub fn emit_upgrade_admin_transfer_completed(
-    e: &Env,
-    old_admin: &Address,
-    new_admin: &Address,
-) {
-    let topics = (Symbol::new(e, "upgrade_admin_transfer_completed"), old_admin.clone());
+pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "upgrade_admin_transfer_completed"),
+        old_admin.clone(),
+    );
     let data = new_admin.clone();
     e.events().publish(topics, data);
 }
