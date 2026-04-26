@@ -1,8 +1,11 @@
+#![cfg(test)]
+
+extern crate std;
+
 use crate::*;
 use std::panic::AssertUnwindSafe;
 use soroban_sdk::{Address, Env, String};
 
-#[cfg(test)]
 mod immutable_config_tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
