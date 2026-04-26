@@ -96,7 +96,7 @@ mod zero_address_tests {
     #[test]
     fn test_register_attester_rejects_zero_address() {
         let env = Env::default();
-        let (contract_address, _admin) = setup_contract(&env);
+        let (contract_address, admin) = setup_contract(&env);
         let zero_address = Address::from_string(&String::from_str(
             &env,
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -116,7 +116,7 @@ mod zero_address_tests {
     #[test]
     fn test_register_verifier_rejects_zero_address() {
         let env = Env::default();
-        let (contract_address, _admin) = setup_contract(&env);
+        let (contract_address, admin) = setup_contract(&env);
         let zero_address = Address::from_string(&String::from_str(
             &env,
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",

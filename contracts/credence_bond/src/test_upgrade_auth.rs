@@ -3,10 +3,18 @@ use crate::{
     upgrade_auth::{self, UpgradeRole, UpgradeStatus},
 };
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Bytes, Env};
+use soroban_sdk::{Address, Bytes, Env, Vec};
 use std::panic::AssertUnwindSafe;
 
-
+// Helper: register contract + admin, return (client, admin, contract_id).
+fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(e, &contract_id);
+    let admin = Address::generate(e);
+    client.initialize(&admin);
+    (client, admin, contract_id)
+}
 
 fn create_test_address(e: &Env) -> Address {
     Address::generate(e)
