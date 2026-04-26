@@ -159,12 +159,17 @@ pub struct UpgradeRecord {
 /// # Panics
 /// * If contract is already initialized
 pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
-    if e.storage().instance().has(&DataKey::Upgrade(UpgradeKey::Admin)) {
+    if e.storage()
+        .instance()
+        .has(&DataKey::Upgrade(UpgradeKey::Admin))
+    {
         panic!("upgrade authorization already initialized");
     }
 
     // Set upgrade admin
-    e.storage().instance().set(&DataKey::Upgrade(UpgradeKey::Admin), admin);
+    e.storage()
+        .instance()
+        .set(&DataKey::Upgrade(UpgradeKey::Admin), admin);
 
     // Grant upgrader role to admin
     let auth = UpgradeAuthorization {
@@ -183,17 +188,21 @@ pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
     // Initialize authorized upgraders list
     let mut upgraders = Vec::new(e);
     upgraders.push_back(admin.clone());
-    e.storage()
-        .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders), &upgraders);
+    e.storage().instance().set(
+        &DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders),
+        &upgraders,
+    );
 
     // Initialize proposal ID counter
-    e.storage().instance().set(&DataKey::Upgrade(UpgradeKey::NextProposalId), &1u64);
-
-    // Initialize upgrade history
     e.storage()
         .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::History), &Vec::<UpgradeRecord>::new(e));
+        .set(&DataKey::Upgrade(UpgradeKey::NextProposalId), &1u64);
+
+    // Initialize upgrade history
+    e.storage().instance().set(
+        &DataKey::Upgrade(UpgradeKey::History),
+        &Vec::<UpgradeRecord>::new(e),
+    );
 
     events::emit_upgrade_auth_initialized(e, admin);
 }
@@ -259,9 +268,10 @@ pub fn grant_upgrade_auth(
             .get(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders))
             .unwrap_or(Vec::new(e));
         upgraders.push_back(address.clone());
-        e.storage()
-            .instance()
-            .set(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders), &upgraders);
+        e.storage().instance().set(
+            &DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders),
+            &upgraders,
+        );
     }
 
     events::emit_upgrade_auth_granted(e, admin, address, role);
@@ -308,9 +318,10 @@ pub fn revoke_upgrade_auth(e: &Env, admin: &Address, address: &Address) {
                 new_upgraders.push_back(upgrader);
             }
         }
-        e.storage()
-            .instance()
-            .set(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders), &new_upgraders);
+        e.storage().instance().set(
+            &DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders),
+            &new_upgraders,
+        );
     }
 
     // Deactivate authorization
@@ -471,9 +482,10 @@ pub fn propose_upgrade(
     };
 
     // Store proposal
-    e.storage()
-        .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)), &proposal);
+    e.storage().instance().set(
+        &DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)),
+        &proposal,
+    );
 
     events::emit_upgrade_proposed(e, proposer, proposal_id, new_implementation);
 
@@ -522,9 +534,10 @@ pub fn approve_upgrade_proposal(e: &Env, approver: &Address, proposal_id: u64) {
     }
 
     // Store updated proposal
-    e.storage()
-        .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)), &proposal);
+    e.storage().instance().set(
+        &DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)),
+        &proposal,
+    );
 
     events::emit_upgrade_approved(e, approver, proposal_id);
 }
@@ -569,9 +582,10 @@ pub fn execute_upgrade(
         // Mark proposal as executed
         let mut updated_proposal = proposal;
         updated_proposal.status = UpgradeStatus::Executed;
-        e.storage()
-            .instance()
-            .set(&DataKey::Upgrade(UpgradeKey::Proposal(pid)), &updated_proposal);
+        e.storage().instance().set(
+            &DataKey::Upgrade(UpgradeKey::Proposal(pid)),
+            &updated_proposal,
+        );
     }
 
     // Get current implementation
@@ -606,9 +620,10 @@ pub fn execute_upgrade(
         .set(&DataKey::Upgrade(UpgradeKey::History), &history);
 
     // Update implementation
-    e.storage()
-        .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::Implementation), new_implementation);
+    e.storage().instance().set(
+        &DataKey::Upgrade(UpgradeKey::Implementation),
+        new_implementation,
+    );
 
     events::emit_upgrade_executed(e, executor, new_implementation, proposal_id);
 }
@@ -726,7 +741,9 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
         .unwrap_or_else(|| panic!("no upgrade admin"));
 
     // Update upgrade admin
-    e.storage().instance().set(&DataKey::Upgrade(UpgradeKey::Admin), caller);
+    e.storage()
+        .instance()
+        .set(&DataKey::Upgrade(UpgradeKey::Admin), caller);
 
     // Grant Upgrader role to the new admin
     let auth = UpgradeAuthorization {
@@ -748,7 +765,7 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders))
         .unwrap_or(Vec::new(e));
-    
+
     let mut already_in = false;
     for i in 0..upgraders.len() {
         if upgraders.get(i).unwrap() == *caller {
@@ -758,18 +775,23 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
     }
     if !already_in {
         upgraders.push_back(caller.clone());
-        e.storage()
-            .instance()
-            .set(&DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders), &upgraders);
+        e.storage().instance().set(
+            &DataKey::Upgrade(UpgradeKey::AuthorizedUpgraders),
+            &upgraders,
+        );
     }
 
     // Clear pending admin
-    e.storage().instance().remove(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin));
+    e.storage()
+        .instance()
+        .remove(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin));
 
     events::emit_upgrade_admin_transfer_completed(e, &old_admin, caller);
 }
 
 /// Get the pending upgrade admin address
 pub fn get_pending_upgrade_admin(e: &Env) -> Option<Address> {
-    e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
+    e.storage()
+        .instance()
+        .get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
 }

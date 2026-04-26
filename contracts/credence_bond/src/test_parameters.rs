@@ -13,7 +13,7 @@
 use crate::parameters::*;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::{Address, Env, Symbol, TryFromVal};
+use soroban_sdk::{symbol_short, Address, Env, FromVal, IntoVal, Symbol, TryFromVal};
 
 // ============================================================================
 // Test Setup Utilities
@@ -630,13 +630,19 @@ fn test_parameter_update_v2_event_args() {
     client.set_protocol_fee_bps(&admin, &200);
 
     let events = e.events().all();
-    let last = events.iter().rev().next().unwrap();
-    
+    let last = events.iter().next_back().unwrap();
+
     // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
     let topics = last.1;
-    assert_eq!(topics.get(0).unwrap(), Symbol::new(&e, "param_updated").into());
-    assert_eq!(topics.get(1).unwrap(), symbol_short!("fee_prot").into());
-    
+    assert_eq!(
+        Symbol::from_val(&e, &topics.get(0).unwrap()),
+        Symbol::new(&e, "param_updated")
+    );
+    assert_eq!(
+        Symbol::from_val(&e, &topics.get(1).unwrap()),
+        symbol_short!("fee_prot")
+    );
+
     // Verify Data: (old_value, new_value)
     let (old_val, new_val): (i128, i128) = last.2.into_val(&e);
     assert_eq!(old_val, 50); // Default value

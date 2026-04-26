@@ -3,6 +3,7 @@
 //! penalty event emission, and security (zero/max penalty edge cases).
 
 use crate::early_exit_penalty;
+use crate::math;
 use crate::test_helpers;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
@@ -127,6 +128,6 @@ fn test_calculate_penalty_unit() {
     assert_eq!(p, 50); // 5% of 1000
     let p = early_exit_penalty::calculate_penalty(1000, 0, 100, 500);
     assert_eq!(p, 0);
-    let p = early_exit_penalty::calculate_penalty(1000, 50, 100, math::BPS_DENOMINATOR);
+    let p = early_exit_penalty::calculate_penalty(1000, 50, 100, math::BPS_DENOMINATOR as u32);
     assert_eq!(p, 500);
 }
