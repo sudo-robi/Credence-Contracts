@@ -3,8 +3,8 @@
 extern crate std;
 
 use crate::*;
-use std::panic::AssertUnwindSafe;
 use soroban_sdk::{Address, Env, String};
+use std::panic::AssertUnwindSafe;
 
 mod immutable_config_tests {
     use super::*;
@@ -17,7 +17,7 @@ mod immutable_config_tests {
     #[test]
     fn test_admin_initialized_correctly() {
         let env = Env::default();
-        let contract = create_contract();
+        let _contract = create_contract();
         let admin = Address::generate(&env);
         let contract_address = env.register(CredenceBond, ());
 
@@ -34,7 +34,7 @@ mod immutable_config_tests {
     #[test]
     fn test_admin_cannot_be_reinitialized() {
         let env = Env::default();
-        let contract = create_contract();
+        let _contract = create_contract();
         let admin = Address::generate(&env);
         let contract_address = env.register(CredenceBond, ());
 

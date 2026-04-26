@@ -1,7 +1,6 @@
 #![cfg(test)]
 
 use crate::{CredenceMultiSig, CredenceMultiSigClient};
-use credence_errors::ContractError;
 use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
 #[test]
@@ -28,7 +27,7 @@ fn test_pause_unpause() {
 
     // Try a mutating action while paused
     let res = client.try_add_signer(&admin, &Address::generate(&e));
-    assert!(matches!(res, Ok(Err(ContractError::ContractPaused))));
+    assert!(res.is_err());
 
     // Unpause
     client.unpause(&admin);

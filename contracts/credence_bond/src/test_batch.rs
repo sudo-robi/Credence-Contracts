@@ -6,11 +6,11 @@ use crate::{
     batch::MAX_BATCH_BOND_SIZE, test_helpers::setup_with_token, BatchBondParams, CredenceBond,
     CredenceBondClient,
 };
-use std::panic::AssertUnwindSafe;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, Vec,
 };
+use std::panic::AssertUnwindSafe;
 
 fn build_valid_batch(env: &Env, count: u32) -> Vec<BatchBondParams> {
     let mut params_list = Vec::new(env);
@@ -75,8 +75,8 @@ fn test_create_single_bond_in_batch() {
     assert_eq!(bond.identity, identity);
     assert_eq!(bond.bonded_amount, 1000);
     assert_eq!(bond.bond_duration, 86400);
-    assert_eq!(bond.active, true);
-    assert_eq!(bond.is_rolling, false);
+    assert!(bond.active);
+    assert!(!bond.is_rolling);
 }
 
 #[test]
@@ -457,7 +457,7 @@ fn test_batch_with_rolling_bonds() {
 
     assert_eq!(result.created_count, 1);
     let bond = result.bonds.get(0).unwrap();
-    assert_eq!(bond.is_rolling, true);
+    assert!(bond.is_rolling);
     assert_eq!(bond.notice_period_duration, 7200);
     assert_eq!(bond.withdrawal_requested_at, 0);
 }
