@@ -86,7 +86,8 @@ pub struct CooldownRequest {
     pub requested_at: u64,
 }
 
-#[contracttype]
+#[contracttype(export = false)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     Bond,
@@ -140,7 +141,6 @@ pub enum DataKey {
     UpgradeHistory,
     // Supply cap enforcement storage keys
     SupplyCap,
-    TotalSupply,
     LastCollateralIncreaseLedger,
     // Borrow freeze
     BorrowFrozen,
@@ -391,6 +391,7 @@ impl CredenceBond {
         }
         admin.require_auth();
         governance.require_auth();
+        let reason = Symbol::new(&e, "EmergencyModeChange");
         emergency::set_enabled(&e, enabled, &admin, &governance, reason.clone());
         emergency::emit_emergency_mode_event(&e, enabled, &admin, &governance, &reason);
     }

@@ -25,7 +25,7 @@
 //! - new value
 
 use crate::events::emit_parameter_updated;
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
 // ============================================================================
 // Parameter Bounds Constants
