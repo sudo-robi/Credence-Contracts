@@ -292,8 +292,8 @@ pub fn scan_liquidation_candidates(
                 continue;
             }
 
-            // Check slash ratio: slashed / bonded >= min_slash_ratio_bps / 10000
-            let slash_ratio_bps = (slashed * 10_000) / bonded;
+            // Check slash ratio: slashed / bonded >= min_slash_ratio_bps / math::BPS_DENOMINATOR
+            let slash_ratio_bps = (slashed * crate::math::BPS_DENOMINATOR) / bonded;
             if slash_ratio_bps >= min_slash_ratio_bps as i128 {
                 candidates.push_back(LiquidationCandidate {
                     identity,

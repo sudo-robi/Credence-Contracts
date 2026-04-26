@@ -1001,8 +1001,8 @@ impl CredenceBond {
         if emergency_config.enabled {
             // Address is not Option, so we don't need is_none check if it's stored directly.
             // These addresses are required fields in the EmergencyConfig struct.
-            if emergency_config.emergency_fee_bps > 10000 {
-                panic!("emergency fee exceeds maximum (10000 bps = 100%)");
+            if emergency_config.emergency_fee_bps > math::BPS_DENOMINATOR as u32 {
+                panic!("emergency fee exceeds maximum ({} bps = 100%)", math::BPS_DENOMINATOR);
             }
         }
 

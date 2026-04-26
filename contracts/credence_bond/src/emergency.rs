@@ -72,7 +72,7 @@ pub fn set_config(
     enabled: bool,
 ) {
     if emergency_fee_bps > math::BPS_DENOMINATOR as u32 {
-        panic!("emergency fee bps must be <= 10000 (100%)");
+        panic!("emergency fee bps must be <= {}", math::BPS_DENOMINATOR);
     }
     let cfg = EmergencyConfig {
         governance,
