@@ -7,6 +7,12 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
+pub mod fee;
+
+#[cfg(test)]
+mod fee_tests;
+
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub enum UpgradeKey {
