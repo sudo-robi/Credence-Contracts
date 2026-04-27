@@ -18,12 +18,12 @@ mod immutable_config_tests {
         let admin = Address::generate(&env);
 
         env.mock_all_auths();
-        
+
         env.as_contract(&contract_address, || {
             let result = std::panic::catch_unwind(|| {
                 CredenceBond::require_admin_internal(&env, &admin);
             });
-            
+
             assert!(result.is_err());
             let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
             assert!(panic_msg.contains("contract not initialized - admin not set"));
@@ -41,7 +41,7 @@ mod immutable_config_tests {
 
         env.as_contract(&contract_address, || {
             CredenceBond::initialize(env.clone(), admin.clone());
-            
+
             // This should not panic
             CredenceBond::require_admin_internal(&env, &admin);
         });
@@ -54,12 +54,12 @@ mod immutable_config_tests {
         let contract_address = env.register(CredenceBond, ());
 
         env.mock_all_auths();
-        
+
         env.as_contract(&contract_address, || {
             let result = std::panic::catch_unwind(|| {
                 crate::token_integration::get_token(&env);
             });
-            
+
             assert!(result.is_err());
             let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
             assert!(panic_msg.contains("token not configured - contract not properly initialized"));
@@ -77,11 +77,11 @@ mod immutable_config_tests {
 
         env.as_contract(&contract_address, || {
             CredenceBond::initialize(env.clone(), admin.clone());
-            
+
             let result = std::panic::catch_unwind(|| {
                 CredenceBond::initialize(env.clone(), admin.clone());
             });
-            
+
             assert!(result.is_err());
             let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
             assert!(panic_msg.contains("admin already set"));
@@ -101,17 +101,17 @@ mod immutable_config_tests {
 
         env.as_contract(&contract_address, || {
             CredenceBond::initialize(env.clone(), admin.clone());
-            
+
             // Set token first time - should succeed
             CredenceBond::set_token(env.clone(), admin.clone(), token1.clone());
-            
+
             // Verify token is set
             let retrieved_token = crate::token_integration::get_token(&env);
             assert_eq!(retrieved_token, token1);
-            
+
             // Set token second time - should overwrite (this is expected behavior for tokens)
             CredenceBond::set_token(env.clone(), admin.clone(), token2.clone());
-            
+
             // Verify token was updated
             let retrieved_token = crate::token_integration::get_token(&env);
             assert_eq!(retrieved_token, token2);

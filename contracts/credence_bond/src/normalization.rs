@@ -32,7 +32,8 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if is_multiplier {
         amount.checked_mul(scale).expect("normalization overflow")
     } else {
-        amount.checked_div(scale)
+        amount
+            .checked_div(scale)
             .unwrap_or_else(|| panic!("normalization error: div by zero"))
     }
 }
@@ -41,7 +42,8 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
 pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
     let (scale, is_multiplier) = get_scale_info(e, token);
     if is_multiplier {
-        amount.checked_div(scale)
+        amount
+            .checked_div(scale)
             .unwrap_or_else(|| panic!("denormalization error: div by zero"))
     } else {
         amount.checked_mul(scale).expect("denormalization overflow")
