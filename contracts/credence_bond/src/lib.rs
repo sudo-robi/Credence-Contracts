@@ -2052,6 +2052,7 @@ impl CredenceBond {
 
     /// Clean up expired claims for any user (can be called by anyone)
     pub fn cleanup_expired_claims(e: Env, user: Address) -> u32 {
+        pausable::require_not_paused(&e);
         claims::cleanup_expired_claims(&e, &user)
     }
 
@@ -2129,6 +2130,7 @@ impl CredenceBond {
         max_iter: u32,
         min_slash_ratio_bps: u32,
     ) -> liquidation_scanner::ScanResult {
+        pausable::require_not_paused(&e);
         liquidation_scanner::scan_liquidation_candidates(
             &e,
             &keeper,

@@ -67,6 +67,8 @@ Execute a pause/unpause proposal once sufficient approvals are collected.
 - **When Paused**: All state-changing functions are blocked with `contract is paused` error
 - **When Paused**: Read-only functions continue to work normally
 - **When Paused**: Pause management functions remain available for recovery
+- **Exemptions**: The following functions are not blocked when the contract is paused:
+  - Pause management: `pause()`, `unpause()`, `set_pause_signer()`, `set_pause_threshold()`, `approve_pause_proposal()`, `execute_pause_proposal()`
 
 ### Authorization Model
 - **Admin Functions**: Require SuperAdmin role (in admin contract) or Admin address (in other contracts)
