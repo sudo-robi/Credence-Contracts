@@ -199,3 +199,106 @@ fn test_increase_bond_preserves_other_fields() {
     );
     assert_eq!(updated.bonded_amount, 1150_i128);
 }
+
+// ── lifecycle edge-cases (issue #284) ────────────────────────────────────────
+
+/// top-up preserves bond_start and bond_duration (time fields must not change).
+#[test]
+fn test_increase_bond_preserves_time_fields() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1_000_000);
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    token_client.approve(&identity, &contract_id, &3_000_i128, &1_000_u32);
+    let original =
+        client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+
+    // Advance time before top-up
+    e.ledger().with_mut(|li| li.timestamp = 2_000_000);
+    let updated = client.increase_bond(&identity, &500_i128);
+
+    assert_eq!(
+        updated.bond_start, original.bond_start,
+        "bond_start must not change on top-up"
+    );
+    assert_eq!(
+        updated.bond_duration, original.bond_duration,
+        "bond_duration must not change on top-up"
+    );
+}
+
+/// top-up on a rolling bond preserves is_rolling and notice_period_duration.
+#[test]
+fn test_increase_bond_preserves_rolling_fields() {
+    let e = Env::default();
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    token_client.approve(&identity, &contract_id, &3_000_i128, &1_000_u32);
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &true, &3_600_u64);
+
+    let updated = client.increase_bond(&identity, &500_i128);
+
+    assert!(
+        updated.is_rolling,
+        "is_rolling must be preserved after top-up"
+    );
+    assert_eq!(
+        updated.notice_period_duration, 3_600,
+        "notice_period_duration must be preserved"
+    );
+}
+
+/// top-up respects supply cap — pushing total over cap must panic.
+#[test]
+#[should_panic(expected = "supply cap exceeded")]
+fn test_increase_bond_respects_supply_cap() {
+    let e = Env::default();
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    token_client.approve(&identity, &contract_id, &5_000_i128, &1_000_u32);
+    let admin = soroban_sdk::Address::generate(&e);
+    // Re-initialize with admin to set cap — use mock_all_auths already active
+    client.set_supply_cap(&admin, &1_200_i128);
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    // total=1_000, cap=1_200 → top-up of 300 would push to 1_300 > 1_200
+    client.increase_bond(&identity, &300_i128);
+}
+
+/// top-up of exactly 1 (minimum positive) is accepted.
+#[test]
+fn test_increase_bond_minimum_positive_amount_accepted() {
+    let e = Env::default();
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    token_client.approve(&identity, &contract_id, &2_000_i128, &1_000_u32);
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    let updated = client.increase_bond(&identity, &1_i128);
+    assert_eq!(updated.bonded_amount, 1_001);
+}
+
+/// slashed_amount is unchanged after a top-up.
+#[test]
+fn test_increase_bond_does_not_clear_slashed_amount() {
+    use crate::test_helpers;
+    let e = Env::default();
+    let (client, admin, identity, _token_id, contract_id) = test_helpers::setup_with_token(&e);
+
+    let token_client = soroban_sdk::token::Client::new(&e, &_token_id);
+    let expiry = e.ledger().sequence().saturating_add(10_000);
+    token_client.approve(&identity, &contract_id, &5_000_i128, &expiry);
+
+    client.create_bond_with_rolling(&identity, &2_000_i128, &86_400_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+    client.slash(&admin, &500);
+
+    let before = client.get_identity_state();
+    assert_eq!(before.slashed_amount, 500);
+
+    client.increase_bond(&identity, &1_000_i128);
+    let after = client.get_identity_state();
+    assert_eq!(
+        after.slashed_amount, 500,
+        "top-up must not clear slashed_amount"
+    );
+    assert_eq!(after.bonded_amount, 3_000);
+}
