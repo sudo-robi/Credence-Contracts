@@ -1,6 +1,11 @@
 //! Tests for Attestation data structure: validation, serialization, and dedup key.
 
-use crate::types::attestation::{DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT};
+use alloc::string::String as StdString;
+use crate::types::attestation::{
+    DEFAULT_ATTESTATION_WEIGHT,
+    MAX_ATTESTATION_DATA_LENGTH,
+    MAX_ATTESTATION_WEIGHT,
+};
 use crate::types::{Attestation, AttestationDedupKey};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
@@ -29,11 +34,26 @@ fn attestation_validate_accepts_valid() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: DEFAULT_ATTESTATION_WEIGHT,
         attestation_data: String::from_str(&e, "x"),
+        revoked: false,
+    };
+    att.validate();
+}
+
+#[test]
+fn attestation_validate_accepts_empty_data() {
+    let e = Env::default();
+    let att = Attestation {
+        id: 0,
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
+        timestamp: 0,
+        weight: DEFAULT_ATTESTATION_WEIGHT,
+        attestation_data: String::from_str(&e, ""),
         revoked: false,
     };
     att.validate();
@@ -45,8 +65,8 @@ fn attestation_validate_rejects_zero_weight() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: 0,
         attestation_data: String::from_str(&e, "x"),
@@ -61,8 +81,8 @@ fn attestation_validate_rejects_over_max_weight() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: MAX_ATTESTATION_WEIGHT + 1,
         attestation_data: String::from_str(&e, "x"),
@@ -74,13 +94,13 @@ fn attestation_validate_rejects_over_max_weight() {
 #[test]
 fn attestation_is_active() {
     let e = Env::default();
-    let verifier = soroban_sdk::Address::generate(&e);
-    let identity = soroban_sdk::Address::generate(&e);
+    let attester = soroban_sdk::Address::generate(&e);
+    let subject = soroban_sdk::Address::generate(&e);
     let data = String::from_str(&e, "data");
     let att = Attestation {
         id: 0,
-        verifier: verifier.clone(),
-        identity: identity.clone(),
+        attester: attester.clone(),
+        subject: subject.clone(),
         timestamp: 0,
         weight: DEFAULT_ATTESTATION_WEIGHT,
         attestation_data: data,
@@ -95,20 +115,31 @@ fn attestation_is_active() {
 #[test]
 fn attestation_dedup_key_equality() {
     let e = Env::default();
-    let v = soroban_sdk::Address::generate(&e);
-    let i = soroban_sdk::Address::generate(&e);
+    let attester = soroban_sdk::Address::generate(&e);
+    let subject = soroban_sdk::Address::generate(&e);
     let d = String::from_str(&e, "x");
     let k1 = AttestationDedupKey {
-        verifier: v.clone(),
-        identity: i.clone(),
+        attester: attester.clone(),
+        subject: subject.clone(),
         attestation_data: d.clone(),
     };
     let k2 = AttestationDedupKey {
-        verifier: v,
-        identity: i,
+        attester,
+        subject,
         attestation_data: d,
     };
     assert_eq!(k1, k2);
+}
+
+#[test]
+#[should_panic(expected = "attestation data exceeds maximum length")]
+fn attestation_validate_rejects_too_long_data() {
+    let e = Env::default();
+    let long_str: StdString = core::iter::repeat('a')
+        .take((MAX_ATTESTATION_DATA_LENGTH + 1) as usize)
+        .collect();
+    let data = String::from_str(&e, &long_str);
+    Attestation::validate_data(&data);
 }
 
 /// Serialization is exercised via add_attestation/get_attestation (contract storage) in test_attestation.

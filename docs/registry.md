@@ -79,4 +79,11 @@ register(id2, bond_A)  → ok  (bond_A is also free again)
 | `#404` | `AlreadyDeactivated` | `deactivate` called on an already-inactive entry |
 | `#405` | `AlreadyActive` | `reactivate` called on an already-active entry |
 
-All codes are wire-stable and must never be renumbered after deployment.
+Part of the Credence protocol contracts.
+
+## Known Simplifications
+
+- `get_all_identities()` is unbounded and has no pagination.
+- There is no cross-contract binding between bond and registry at initialization.
+
+See [known-simplifications.md](known-simplifications.md#7-get_all_identities-has-no-pagination) for details and production paths.
