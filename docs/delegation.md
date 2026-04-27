@@ -62,6 +62,18 @@ Returns `true` if the delegation exists, is not revoked, and has not expired. Re
 - Double revocation is rejected.
 - Each `(owner, delegate, type)` tuple maps to exactly one delegation record.
 
+## Pausing
+
+The contract implements a pause mechanism to protect the protocol in case of emergency. 
+
+- **Mechanism**: Can be a direct pause by admin (if threshold is 0) or a multi-sig proposal process (if threshold > 0).
+- **Gated Functions**: All mutating functions related to delegation are gated and will panic if the contract is paused:
+  - `delegate` / `execute_delegated_delegate`
+  - `revoke_delegation` / `execute_delegated_revoke`
+  - `revoke_attestation` / `execute_delegated_revoke_attest`
+  - `invalidate_nonce_range`
+- **Exempt Functions**: Query functions (`is_valid_delegate`, `get_delegation`, etc.) and pause-management functions remain active even when paused.
+
 ## Usage
 
 ```bash
