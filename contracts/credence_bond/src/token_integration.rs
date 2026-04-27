@@ -23,7 +23,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
     let stored_admin: Address = e
         .storage()
         .instance()
-        .get(&DataKey::Admin)
+        .get(&crate::DataKey::Admin)
         .unwrap_or_else(|| panic!("not initialized"));
     admin.require_auth();
     if *admin != stored_admin {
@@ -54,7 +54,7 @@ pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &Strin
 pub fn get_token(e: &Env) -> Address {
     e.storage()
         .instance()
-        .get(&DataKey::BondToken)
+        .get(&crate::DataKey::BondToken)
         .unwrap_or_else(|| panic!("token not configured - contract not properly initialized"))
 }
 
@@ -87,12 +87,13 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
     let token = safe_token::token_client(e);
+    let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
 
-    // Perform transfer
-    token.transfer_from(&contract, owner, &contract, &amount);
+    // Perform transfer using safe_token
+    safe_token::safe_transfer_from(e, owner, amount);
 
     // Verify balance increased by exactly the expected amount
     // Rejects fee-on-transfer tokens where received < requested
@@ -123,12 +124,13 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
 
     let contract = e.current_contract_address();
     let token = safe_token::token_client(e);
+    let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
 
-    // Perform transfer
-    token.transfer(&contract, recipient, &amount);
+    // Perform transfer using safe_token
+    safe_token::safe_transfer(e, recipient, amount);
 
     // Verify balance decreased by exactly the expected amount
     // Rejects fee-on-transfer tokens where sent != requested
@@ -141,3 +143,5 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
         panic!("unsupported token: transfer amount mismatch (code 213)");
     }
 }
+
+

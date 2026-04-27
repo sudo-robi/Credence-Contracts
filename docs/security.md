@@ -11,6 +11,9 @@ Security mechanisms for the Credence bond and attestation system.
 ## Replay attack prevention
 
 - **Nonces** — Each identity has a nonce (starts at 0). State-changing attestation calls require the current nonce and increment it on success.
+- **Atomic validation** — Deadlines and contract-domain checks are validated before the nonce is consumed, so failed or expired signed actions do not advance the nonce.
+- **Contract-domain binding** — `contract_id` is validated against the current contract address, preventing the same nonce/deadline pair from replaying across different contract deployments.
+- **Signed-action context** — `contract_id`, `deadline`, and `nonce` are all bound to the current contract context before consuming the nonce.
 - **get_nonce(identity)** — Returns the current nonce; the caller must pass this value in the next add_attestation or revoke_attestation call.
 - Replayed or out-of-order transactions are rejected with "invalid nonce" because the stored nonce no longer matches.
 - Nonce overflow is handled by checked arithmetic (panic if increment would overflow).
@@ -25,3 +28,10 @@ Security mechanisms for the Credence bond and attestation system.
 
 - Reentrancy guard is used in withdraw_bond, slash_bond, and collect_fees; state is updated before any external call (checks-effects-interactions).
 - See contract code for lock acquire/release around callbacks.
+
+## Same-ledger sequencing guardrails
+
+- Credence enforces a same-ledger guard for sensitive bond operations to prevent unfair sandwich-style ordering attacks.
+- The `same_ledger_liquidation_guard` records the current ledger sequence after every collateral-increasing action, including bond creation, top-up, and batch creation.
+- `slash_bond` rejects any slash if the last collateral increase occurred in the current ledger, preventing a slash from executing in the same ledger as an increase.
+- This is a targeted anti-sandwich protection and does not block unrelated operations such as attestations, withdrawals, or governance actions.

@@ -24,6 +24,8 @@ pub const NORMALIZED_DECIMALS: u32 = 18;
 /// scaling by 10^18 would give 1e42 which overflows.
 /// So we cap at 36 decimals max (10^18 scale factor max).
 pub const MAX_SUPPORTED_DECIMALS: u32 = 36;
+/// Maximum supported token decimals. Hardened to 18 to prevent overflow in 128-bit accounting.
+pub const MAX_SUPPORTED_DECIMALS: u32 = 18;
 
 /// Minimum supported token decimals.
 pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
@@ -41,6 +43,8 @@ pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
             "token decimals {} outside supported range [0, 36]",
             decimals
         );
+    if decimals > MAX_SUPPORTED_DECIMALS {
+        panic!("token decimals exceeds supported maximum of 18");
     }
 
     if decimals <= NORMALIZED_DECIMALS {
@@ -76,6 +80,9 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     } else {
         amount.checked_div(scale)
             .expect("normalization error: division by zero")
+        amount
+            .checked_div(scale)
+            .expect("normalization truncation error")
     }
 }
 
@@ -125,6 +132,7 @@ pub fn can_normalize_safely(e: &Env, token: &Address, amount: i128) -> bool {
     if is_multiplier {
         // Check if amount * scale would overflow
         amount.checked_mul(scale).is_some()
+        amount.checked_div(scale).expect("denormalization error")
     } else {
         // Division never overflows (except by zero, but scale >= 1)
         true
@@ -139,7 +147,7 @@ mod tests {
     #[test]
     fn test_normalization_6_decimals() {
         let e = Env::default();
-        let token = Address::generate(&e);
+        let _token = Address::generate(&e);
         // We can't easily mock the token decimals here without registering a contract,
         // but the logic 10^(18-6) = 10^12 is what we want to verify implicitly
         // if we were to mock it.
