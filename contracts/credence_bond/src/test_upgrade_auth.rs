@@ -1,11 +1,10 @@
+extern crate std;
 use crate::{
-    upgrade_auth::{
-        self, UpgradeAuthorization, UpgradeProposal, UpgradeRecord, UpgradeRole, UpgradeStatus,
-    },
-    CredenceBondClient,
+    upgrade_auth::{self, UpgradeRole, UpgradeStatus},
 };
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, Vec};
+use std::panic::AssertUnwindSafe;
 
 // Helper: register contract + admin, return (client, admin, contract_id).
 fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
@@ -74,9 +73,9 @@ fn test_grant_and_revoke_upgrade_authorization() {
     upgrade_auth::revoke_upgrade_auth(&env, &admin, &user2);
 
     // Should panic when trying to get revoked authorization
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::get_upgrade_role(&env, &user2);
-    })
+    }))
     .expect_err("Should panic when getting revoked authorization");
 }
 
@@ -157,7 +156,7 @@ fn test_upgrade_execution_with_proposal() {
     let proposer = create_test_address(&env);
     let approver = create_test_address(&env);
     let executor = create_test_address(&env);
-    let old_impl = create_test_address(&env);
+    let _old_impl = create_test_address(&env);
     let new_impl = create_test_address(&env);
 
     // Initialize and setup
@@ -204,17 +203,17 @@ fn test_unauthorized_upgrade_attempts() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to upgrade without authorization - should fail
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    })
+    }))
     .expect_err("Unauthorized upgrade should fail");
 
     // Grant proposer role (still can't upgrade)
     upgrade_auth::grant_upgrade_auth(&env, &admin, &unauthorized, UpgradeRole::Proposer, 0);
 
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    })
+    }))
     .expect_err("Proposer should not be able to upgrade");
 }
 
@@ -227,9 +226,9 @@ fn test_cannot_revoke_last_upgrade_admin() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to revoke the only upgrade admin - should fail
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::revoke_upgrade_auth(&env, &admin, &admin);
-    })
+    }))
     .expect_err("Cannot revoke last upgrade admin");
 }
 
@@ -238,7 +237,7 @@ fn test_upgrade_history_tracking() {
     let env = create_test_env();
     let admin = create_test_address(&env);
     let executor = create_test_address(&env);
-    let impl1 = create_test_address(&env);
+    let _impl1 = create_test_address(&env);
     let impl2 = create_test_address(&env);
     let impl3 = create_test_address(&env);
 

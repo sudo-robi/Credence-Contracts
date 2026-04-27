@@ -1,10 +1,12 @@
 #![cfg(test)]
 
+use std::vec::Vec;
+
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, FromVal, Symbol,
+    Address, Env, FromVal, Symbol, Vec,
 };
 
 #[test]
@@ -206,7 +208,7 @@ fn test_v2_event_indexing_improvements() {
     let increase_topic_added = i128::from_val(&e, &new_increase_event.1.get(2).unwrap());
     let increase_topic_total = i128::from_val(&e, &new_increase_event.1.get(3).unwrap());
     let increase_topic_timestamp = u64::from_val(&e, &new_increase_event.1.get(4).unwrap());
-    let increase_data = <(bool, crate::BondTier)>::from_val(&e, &new_increase_event.2);
+    let _increase_data = <(bool, crate::BondTier)>::from_val(&e, &new_increase_event.2);
 
     assert_eq!(increase_topic_name, Symbol::new(&e, "bond_increased_v2"));
     assert_eq!(increase_topic_ident, identity);
@@ -253,7 +255,9 @@ fn test_event_indexing_query_efficiency() {
         client.create_bond_with_rolling(identity, &amount, &86400_u64, &false, &0_u64);
 
         // Advance time for uniqueness
-        e.ledger().set_timestamp(e.ledger().timestamp() + 1000);
+        let mut ledger_info = e.ledger().get();
+        ledger_info.timestamp += 1000;
+        e.ledger().set(ledger_info);
     }
 
     let events = e.events().all();
