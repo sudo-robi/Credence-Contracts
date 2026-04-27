@@ -84,3 +84,91 @@ fn test_execute_requires_threshold() {
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 }
+
+#[test]
+fn test_delegate_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.pause(&admin);
+    assert!(client.try_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64).is_err());
+}
+
+#[test]
+fn test_revoke_delegation_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.pause(&admin);
+    assert!(client.try_revoke_delegation(&owner, &delegate, &DelegationType::Attestation).is_err());
+}
+
+#[test]
+fn test_revoke_attestation_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.pause(&admin);
+    assert!(client.try_revoke_attestation(&owner, &delegate).is_err());
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #106)")]
+fn test_execute_delegated_delegate_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.pause(&admin);
+    let payload = DelegatedActionPayload {
+        nonce: 0,
+        contract_id: env.current_contract_address(),
+        domain: DomainTag::Delegate,
+        owner: owner.clone(),
+        target: delegate.clone(),
+    };
+    client.execute_delegated_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &payload);
+}
+
+#[test]
+fn test_execute_delegated_revoke_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.pause(&admin);
+    let payload = DelegatedActionPayload {
+        nonce: 0,
+        contract_id: env.current_contract_address(),
+        domain: DomainTag::RevokeDelegation,
+        owner: owner.clone(),
+        target: delegate.clone(),
+    };
+    assert!(client.try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload).is_err());
+}
+
+#[test]
+fn test_execute_delegated_revoke_attest_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.pause(&admin);
+    let payload = DelegatedActionPayload {
+        nonce: 0,
+        contract_id: env.current_contract_address(),
+        domain: DomainTag::RevokeAttestation,
+        owner: owner.clone(),
+        target: delegate.clone(),
+    };
+    assert!(client.try_execute_delegated_revoke_attest(&owner, &delegate, &payload).is_err());
+}
+
+#[test]
+fn test_invalidate_nonce_range_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    client.pause(&admin);
+    assert!(client.try_invalidate_nonce_range(&owner, &100_u64).is_err());
+}
