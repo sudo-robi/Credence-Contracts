@@ -2,7 +2,9 @@
 //! Centralizes token configuration, allowance checks, and transfer operations.
 //! Rejects fee-on-transfer tokens where balance verification fails.
 
+use crate::safe_token;
 use crate::DataKey;
+use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env, String, Symbol};
 
 /// Stellar network passphrase label used for USDC mainnet references.
@@ -84,6 +86,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
     require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
+    let token = safe_token::token_client(e);
     let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
@@ -120,6 +123,7 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
+    let token = safe_token::token_client(e);
     let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer

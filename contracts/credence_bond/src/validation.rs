@@ -2,6 +2,11 @@
 //!
 //! Provides validation functions for bond amounts to ensure they fall within acceptable ranges.
 //! This module centralizes the validation logic for minimum and maximum bond amounts.
+//!
+//! # Important: Decimal Normalization
+//! All validation constants are expressed in **normalized 18-decimal format**.
+//! The bond contract normalizes all token amounts to 18 decimals before validation,
+//! ensuring consistent behavior across tokens with different decimal places.
 
 use soroban_sdk::Address;
 
@@ -41,11 +46,13 @@ pub fn validate_recipient(recipient: &Address, contract: &Address) {
     // The require_auth() calls in the calling code provide the primary validation.
 }
 
-/// Minimum bond amount accepted by the bond contract test suite.
-pub const MIN_BOND_AMOUNT: i128 = 1_000;
+/// Minimum bond amount in normalized 18-decimal format (1 token = 10^18).
+/// This ensures consistent validation regardless of underlying token decimals.
+pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000; // 1 * 10^18 (1 token)
 
-/// Maximum bond amount (100 million USDC with 6 decimals = 100_000_000_000_000)
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000; // 100M tokens (assuming 6 decimals)
+/// Maximum bond amount in normalized 18-decimal format (100 million tokens = 10^8 * 10^18 = 10^26).
+/// This prevents overflow in accounting calculations.
+pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000; // 100M * 10^18
 
 /// Validates that a bond amount is within acceptable bounds.
 ///
