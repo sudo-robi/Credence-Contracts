@@ -115,7 +115,6 @@ fn test_revoke_attestation_paused() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #106)")]
 fn test_execute_delegated_delegate_paused() {
     let (env, admin, client) = setup();
     let owner = Address::generate(&env);
@@ -123,12 +122,12 @@ fn test_execute_delegated_delegate_paused() {
     client.pause(&admin);
     let payload = DelegatedActionPayload {
         nonce: 0,
-        contract_id: env.current_contract_address(),
+        contract_id: client.address.clone(),
         domain: DomainTag::Delegate,
         owner: owner.clone(),
         target: delegate.clone(),
     };
-    client.execute_delegated_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &payload);
+    assert!(client.try_execute_delegated_delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &payload).is_err());
 }
 
 #[test]
@@ -140,7 +139,7 @@ fn test_execute_delegated_revoke_paused() {
     client.pause(&admin);
     let payload = DelegatedActionPayload {
         nonce: 0,
-        contract_id: env.current_contract_address(),
+        contract_id: client.address.clone(),
         domain: DomainTag::RevokeDelegation,
         owner: owner.clone(),
         target: delegate.clone(),
@@ -157,7 +156,7 @@ fn test_execute_delegated_revoke_attest_paused() {
     client.pause(&admin);
     let payload = DelegatedActionPayload {
         nonce: 0,
-        contract_id: env.current_contract_address(),
+        contract_id: client.address.clone(),
         domain: DomainTag::RevokeAttestation,
         owner: owner.clone(),
         target: delegate.clone(),
