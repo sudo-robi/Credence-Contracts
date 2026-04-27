@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
+    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 pub mod access_control;
@@ -323,8 +323,17 @@ impl CredenceBond {
         if amount > available {
             panic!("insufficient balance for withdrawal");
         }
+        
+        // Get token address for denormalization
+        let token = token_integration::get_token(&e);
+        
         let fee_amount = emergency::calculate_fee(amount, cfg.emergency_fee_bps);
         let net_amount = amount.checked_sub(fee_amount).expect("fee exceeds amount");
+        
+        // Denormalize amounts for token transfers
+        let native_net_amount = normalization::denormalize(&e, &token, net_amount);
+        let native_fee_amount = normalization::denormalize(&e, &token, fee_amount);
+        
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -504,23 +513,36 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
-        validation::validate_bond_amount(amount);
-        if e.storage()
-            .instance()
-            .has(&parameters::ParameterKey::MaxLeverage)
-        {
-            leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
-        }
         // Validate duration early so callers that expect validation errors do not
         // require token configuration (token may be unset in unit tests).
         validation::validate_bond_duration(duration);
 
         pausable::require_not_paused(&e);
         identity.require_auth();
+        
+        // Get token address for normalization
+        let token = token_integration::get_token(&e);
+        
+        // Normalize the incoming amount to 18 decimals for internal accounting
+        let normalized_amount = normalization::normalize(&e, &token, amount);
+        
+        // Validate the normalized amount
+        validation::validate_bond_amount(normalized_amount);
+        if e.storage()
+            .instance()
+            .has(&parameters::ParameterKey::MaxLeverage)
+        {
+            leverage::validate_leverage(normalized_amount, parameters::get_max_leverage(&e));
+        }
+        
+        // Transfer native token amount (in token's decimals)
         token_integration::transfer_into_contract(&e, &identity, amount);
+        
         let bond_start = e.ledger().timestamp();
         let _end = bond_start.checked_add(duration).expect("bond end overflow");
-        let (fee, net_amount) = fees::calculate_fee(&e, amount);
+        
+        // Calculate fees on normalized amount
+        let (fee, net_amount) = fees::calculate_fee(&e, normalized_amount);
 
         // Enforce supply cap - check after calculating net_amount
         let supply_cap = Self::get_supply_cap(e.clone());
@@ -537,7 +559,7 @@ impl CredenceBond {
         if fee > 0 {
             let (treasury_opt, _) = fees::get_config(&e);
             if let Some(treasury) = treasury_opt {
-                fees::record_fee(&e, &identity, amount, fee, &treasury);
+                fees::record_fee(&e, &identity, normalized_amount, fee, &treasury);
             }
         }
 
@@ -552,7 +574,7 @@ impl CredenceBond {
 
         let bond = IdentityBond {
             identity: identity.clone(),
-            bonded_amount: net_amount,
+            bonded_amount: net_amount, // Store normalized amount
             bond_start,
             bond_duration: duration,
             slashed_amount: 0,
@@ -569,7 +591,7 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(net_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
 
-        // Emit both old and new events for backward compatibility during migration
+        // Emit events with both native and normalized amounts for transparency
         events::emit_bond_created(&e, &identity, amount, duration, is_rolling);
         events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, bond_start);
 
@@ -985,7 +1007,16 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("insufficient balance for withdrawal");
         }
-        token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        
+        // Get token address for denormalization
+        let token = token_integration::get_token(&e);
+        
+        // Denormalize the amount from 18 decimals to native token decimals for transfer
+        let native_amount = normalization::denormalize(&e, &token, amount);
+        
+        // Transfer denormalized amount (in token's native decimals)
+        token_integration::transfer_from_contract(&e, &bond.identity, native_amount);
+        
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -1049,6 +1080,10 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("insufficient balance for withdrawal");
         }
+        
+        // Get token address for denormalization
+        let token = token_integration::get_token(&e);
+        
         let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
         let remaining = end.saturating_sub(now);
         let penalty = early_exit_penalty::calculate_penalty(
@@ -1059,15 +1094,21 @@ impl CredenceBond {
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
 
-        // Calculate net amount and transfer to user
-        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
-        token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
+        // Calculate net amount in normalized format
+        let net_amount_normalized = amount.checked_sub(penalty).expect("penalty exceeds amount");
+        
+        // Denormalize amounts for token transfers
+        let native_net_amount = normalization::denormalize(&e, &token, net_amount_normalized);
+        let native_penalty = normalization::denormalize(&e, &token, penalty);
+        
+        // Transfer net amount to user (in native decimals)
+        token_integration::transfer_from_contract(&e, &bond.identity, native_net_amount);
 
         // Instead of transferring penalty to treasury immediately,
         // add a potential penalty refund claim for good behavior
         if penalty > 0 {
-            // Transfer penalty to treasury (still push-based for treasury)
-            token_integration::transfer_from_contract(&e, &treasury, penalty);
+            // Transfer penalty to treasury (still push-based for treasury, in native decimals)
+            token_integration::transfer_from_contract(&e, &treasury, native_penalty);
 
             // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
             let refund_amount = penalty / 2;
@@ -2038,3 +2079,5 @@ mod test_zero_address;
 mod test_zero_address_working;
 #[cfg(test)]
 mod token_integration_test;
+#[cfg(test)]
+mod test_decimal_normalization;
