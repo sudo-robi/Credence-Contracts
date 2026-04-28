@@ -27,6 +27,18 @@
 use crate::events::emit_parameter_updated;
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
+/// Governance approval envelope for parameter mutations.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct GovernanceApproval {
+    /// Governance actor authorizing this parameter change.
+    pub approver: Address,
+    /// Expiration timestamp (0 = no expiry).
+    pub expires_at: u64,
+    /// Parameter category this approval is valid for.
+    pub category: Symbol,
+}
+
 // ============================================================================
 // Parameter Bounds Constants
 // ============================================================================
@@ -248,7 +260,23 @@ pub fn get_max_leverage(e: &Env) -> u32 {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("fee"),
+    };
+    set_protocol_fee_bps_with_approval(e, admin, value, &approval);
+}
+
+/// Set the protocol fee rate with explicit governance approval invariants.
+pub fn set_protocol_fee_bps_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: u32,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("fee"));
 
     if !(MIN_PROTOCOL_FEE_BPS..=MAX_PROTOCOL_FEE_BPS).contains(&value) {
         panic!("protocol_fee_bps out of bounds");
@@ -286,7 +314,23 @@ pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_attestation_fee_bps(e: &Env, admin: &Address, value: u32) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("fee"),
+    };
+    set_attestation_fee_bps_with_approval(e, admin, value, &approval);
+}
+
+/// Set the attestation fee rate with explicit governance approval invariants.
+pub fn set_attestation_fee_bps_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: u32,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("fee"));
 
     if !(MIN_ATTESTATION_FEE_BPS..=MAX_ATTESTATION_FEE_BPS).contains(&value) {
         panic!("attestation_fee_bps out of bounds");
@@ -324,7 +368,23 @@ pub fn set_attestation_fee_bps(e: &Env, admin: &Address, value: u32) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_withdrawal_cooldown_secs(e: &Env, admin: &Address, value: u64) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("cooldown"),
+    };
+    set_withdrawal_cooldown_secs_with_approval(e, admin, value, &approval);
+}
+
+/// Set withdrawal cooldown with explicit governance approval invariants.
+pub fn set_withdrawal_cooldown_secs_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: u64,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("cooldown"));
 
     if !(MIN_WITHDRAWAL_COOLDOWN_SECS..=MAX_WITHDRAWAL_COOLDOWN_SECS).contains(&value) {
         panic!("withdrawal_cooldown_secs out of bounds");
@@ -362,7 +422,23 @@ pub fn set_withdrawal_cooldown_secs(e: &Env, admin: &Address, value: u64) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_slash_cooldown_secs(e: &Env, admin: &Address, value: u64) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("cooldown"),
+    };
+    set_slash_cooldown_secs_with_approval(e, admin, value, &approval);
+}
+
+/// Set slash cooldown with explicit governance approval invariants.
+pub fn set_slash_cooldown_secs_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: u64,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("cooldown"));
 
     if !(MIN_SLASH_COOLDOWN_SECS..=MAX_SLASH_COOLDOWN_SECS).contains(&value) {
         panic!("slash_cooldown_secs out of bounds");
@@ -400,7 +476,23 @@ pub fn set_slash_cooldown_secs(e: &Env, admin: &Address, value: u64) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_bronze_threshold(e: &Env, admin: &Address, value: i128) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("tier"),
+    };
+    set_bronze_threshold_with_approval(e, admin, value, &approval);
+}
+
+/// Set bronze threshold with explicit governance approval invariants.
+pub fn set_bronze_threshold_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: i128,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_BRONZE_THRESHOLD..=MAX_BRONZE_THRESHOLD).contains(&value) {
         panic!("bronze_threshold out of bounds");
@@ -438,7 +530,23 @@ pub fn set_bronze_threshold(e: &Env, admin: &Address, value: i128) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_silver_threshold(e: &Env, admin: &Address, value: i128) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("tier"),
+    };
+    set_silver_threshold_with_approval(e, admin, value, &approval);
+}
+
+/// Set silver threshold with explicit governance approval invariants.
+pub fn set_silver_threshold_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: i128,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_SILVER_THRESHOLD..=MAX_SILVER_THRESHOLD).contains(&value) {
         panic!("silver_threshold out of bounds");
@@ -476,7 +584,23 @@ pub fn set_silver_threshold(e: &Env, admin: &Address, value: i128) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_gold_threshold(e: &Env, admin: &Address, value: i128) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("tier"),
+    };
+    set_gold_threshold_with_approval(e, admin, value, &approval);
+}
+
+/// Set gold threshold with explicit governance approval invariants.
+pub fn set_gold_threshold_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: i128,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_GOLD_THRESHOLD..=MAX_GOLD_THRESHOLD).contains(&value) {
         panic!("gold_threshold out of bounds");
@@ -514,7 +638,23 @@ pub fn set_gold_threshold(e: &Env, admin: &Address, value: i128) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_platinum_threshold(e: &Env, admin: &Address, value: i128) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("tier"),
+    };
+    set_platinum_threshold_with_approval(e, admin, value, &approval);
+}
+
+/// Set platinum threshold with explicit governance approval invariants.
+pub fn set_platinum_threshold_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: i128,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_PLATINUM_THRESHOLD..=MAX_PLATINUM_THRESHOLD).contains(&value) {
         panic!("platinum_threshold out of bounds");
@@ -555,7 +695,23 @@ pub fn set_platinum_threshold(e: &Env, admin: &Address, value: i128) {
 /// # Events
 /// Emits `parameter_changed` event with old and new values
 pub fn set_max_leverage(e: &Env, admin: &Address, value: u32) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("risk"),
+    };
+    set_max_leverage_with_approval(e, admin, value, &approval);
+}
+
+/// Set max leverage with explicit governance approval invariants.
+pub fn set_max_leverage_with_approval(
+    e: &Env,
+    admin: &Address,
+    value: u32,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("risk"));
 
     if !(MIN_MAX_LEVERAGE..=MAX_MAX_LEVERAGE).contains(&value) {
         panic!("max_leverage out of bounds");
@@ -603,8 +759,23 @@ pub fn require_not_borrow_frozen(e: &Env) {
 /// # Events
 /// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
 pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("risk"),
+    };
+    set_borrow_frozen_with_approval(e, admin, frozen, &approval);
+}
+
+/// Set borrow freeze with explicit governance approval invariants.
+pub fn set_borrow_frozen_with_approval(
+    e: &Env,
+    admin: &Address,
+    frozen: bool,
+    approval: &GovernanceApproval,
+) {
     validate_admin(e, admin);
-    admin.require_auth();
+    validate_governance_approval(e, admin, approval, symbol_short!("risk"));
     let old = is_borrow_frozen(e);
     e.storage()
         .instance()
@@ -630,6 +801,7 @@ pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
 /// - "not initialized" if contract not initialized
 /// - "not admin" if caller is not the stored admin address
 fn validate_admin(e: &Env, caller: &Address) {
+    caller.require_auth();
     let stored_admin: Address = e
         .storage()
         .instance()
@@ -637,6 +809,23 @@ fn validate_admin(e: &Env, caller: &Address) {
         .unwrap_or_else(|| panic!("not initialized"));
     if caller != &stored_admin {
         panic!("not admin");
+    }
+}
+
+fn validate_governance_approval(
+    e: &Env,
+    admin: &Address,
+    approval: &GovernanceApproval,
+    expected_category: Symbol,
+) {
+    if approval.approver != *admin {
+        panic!("governance approver mismatch");
+    }
+    if approval.expires_at > 0 && e.ledger().timestamp() > approval.expires_at {
+        panic!("governance approval expired");
+    }
+    if approval.category != expected_category {
+        panic!("governance approval category mismatch");
     }
 }
 
