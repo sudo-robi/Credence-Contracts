@@ -58,6 +58,8 @@ pub const DEFAULT_MAX_ITER: u32 = 50;
 pub enum ScanKey {
     /// Vec<Address> of all registered bond holders.
     BondHolderRegistry,
+    /// Whether a bond holder address is active in the registry.
+    BondHolderActive(Address),
     /// u32 cursor per keeper address (tamper-resistant progress state).
     KeeperCursor(Address),
     /// Total registered bond holders (cached for O(1) length check).
@@ -116,8 +118,23 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
         .get(&ScanKey::BondHolderRegistry)
         .unwrap_or_else(|| Vec::new(e));
 
-    // Idempotency guard — do not duplicate
+    let active_key = ScanKey::BondHolderActive(identity.clone());
+
+    // If already present, only reactivate if previously inactive.
     if registry.iter().any(|a| a == *identity) {
+        let is_active: bool = e.storage().instance().get(&active_key).unwrap_or(true);
+        if is_active {
+            return;
+        }
+
+        e.storage().instance().set(&active_key, &true);
+        let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
+        e.storage().instance().set(&ScanKey::RegistrySize, &size);
+
+        e.events().publish(
+            (Symbol::new(e, "bond_holder_registered"),),
+            identity.clone(),
+        );
         return;
     }
 
@@ -126,7 +143,9 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
         .instance()
         .set(&ScanKey::BondHolderRegistry, &registry);
 
-    let size = registry.len();
+    e.storage().instance().set(&active_key, &true);
+
+    let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
     e.storage().instance().set(&ScanKey::RegistrySize, &size);
 
     e.events().publish(
@@ -142,21 +161,25 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
 /// * `e` - Soroban environment
 /// * `identity` - Address of the bond holder to remove
 pub fn deregister_bond_holder(e: &Env, identity: &Address) {
-    let mut registry: Vec<Address> = e
+    let registry: Vec<Address> = e
         .storage()
         .instance()
         .get(&ScanKey::BondHolderRegistry)
         .unwrap_or_else(|| Vec::new(e));
 
-    let pos = registry.iter().position(|a| a == *identity);
-    if let Some(idx) = pos {
-        registry.remove(idx as u32);
-        e.storage()
-            .instance()
-            .set(&ScanKey::BondHolderRegistry, &registry);
+    if registry.iter().any(|a| a == *identity) {
+        let active_key = ScanKey::BondHolderActive(identity.clone());
+        let is_active: bool = e.storage().instance().get(&active_key).unwrap_or(true);
+        if !is_active {
+            return;
+        }
 
-        let size = registry.len();
-        e.storage().instance().set(&ScanKey::RegistrySize, &size);
+        e.storage().instance().set(&active_key, &false);
+
+        let size = get_registry_size(e);
+        if size > 0 {
+            e.storage().instance().set(&ScanKey::RegistrySize, &(size - 1));
+        }
 
         e.events().publish(
             (Symbol::new(e, "bond_holder_deregistered"),),
@@ -199,10 +222,16 @@ pub fn get_keeper_cursor(e: &Env, keeper: &Address) -> u32 {
 ///   by exactly the last page size.
 pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
     let current: u32 = get_keeper_cursor(e, keeper);
-    let size: u32 = get_registry_size(e);
+    let registry_slots: u32 = e
+        .storage()
+        .instance()
+        .get::<_, Vec<Address>>(&ScanKey::BondHolderRegistry)
+        .unwrap_or_else(|| Vec::new(e))
+        .len();
 
     // Allow reset to 0 (new pass) or forward advance within bounds
-    let valid = next_cursor == 0 || (next_cursor > current && next_cursor <= size);
+    let valid =
+        next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
     if !valid {
         panic!("keeper cursor: invalid advance");
     }
@@ -252,9 +281,10 @@ pub fn scan_liquidation_candidates(
         .get(&ScanKey::BondHolderRegistry)
         .unwrap_or_else(|| Vec::new(e));
 
-    let registry_size = registry.len();
+    let registry_slots = registry.len();
+    let active_registry_size = get_registry_size(e);
 
-    if cursor > registry_size {
+    if cursor > registry_slots {
         panic!("cursor out of range");
     }
 
@@ -265,14 +295,23 @@ pub fn scan_liquidation_candidates(
         max_iter.min(MAX_ITER_HARD_CAP)
     };
 
-    let end = (cursor + effective_max).min(registry_size);
-    let done = end >= registry_size;
+    let end = (cursor + effective_max).min(registry_slots);
+    let done = end >= registry_slots;
     let next_cursor = if done { 0 } else { end };
 
     let mut candidates: Vec<LiquidationCandidate> = Vec::new(e);
 
     for i in cursor..end {
         let identity = registry.get(i).unwrap();
+
+        let is_active: bool = e
+            .storage()
+            .instance()
+            .get(&ScanKey::BondHolderActive(identity.clone()))
+            .unwrap_or(true);
+        if !is_active {
+            continue;
+        }
 
         // Fetch bond state for this identity
         if let Some(bond) = e
@@ -319,6 +358,6 @@ pub fn scan_liquidation_candidates(
         candidates,
         next_cursor,
         done,
-        registry_size,
+        registry_size: active_registry_size,
     }
 }

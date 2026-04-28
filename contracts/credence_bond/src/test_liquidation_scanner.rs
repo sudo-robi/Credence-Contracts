@@ -165,6 +165,48 @@ fn test_pagination_next_cursor_resets_to_zero_on_completion() {
 }
 
 #[test]
+fn test_pagination_remains_stable_after_deregister_between_pages() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let keeper = Address::generate(&e);
+
+    let a1 = Address::generate(&e);
+    let a2 = Address::generate(&e);
+    let a3 = Address::generate(&e);
+    let a4 = Address::generate(&e);
+    let a5 = Address::generate(&e);
+
+    client.register_bond_holder(&admin, &a1);
+    client.register_bond_holder(&admin, &a2);
+    client.register_bond_holder(&admin, &a3);
+    client.register_bond_holder(&admin, &a4);
+    client.register_bond_holder(&admin, &a5);
+
+    // First page scans slots [0, 2).
+    let page1 = client.scan_liquidation_candidates(&keeper, &0, &2, &0);
+    assert!(!page1.done);
+    assert_eq!(page1.next_cursor, 2);
+    assert_eq!(page1.registry_size, 5);
+
+    // Deregister from an already-scanned slot. Pagination should keep advancing
+    // over stable slot indexes without panicking or rewinding.
+    client.deregister_bond_holder(&admin, &a1);
+    assert_eq!(client.get_registry_size(), 4);
+
+    // Second page scans slots [2, 4).
+    let page2 = client.scan_liquidation_candidates(&keeper, &page1.next_cursor, &2, &0);
+    assert!(!page2.done);
+    assert_eq!(page2.next_cursor, 4);
+    assert_eq!(page2.registry_size, 4);
+
+    // Final page scans slot [4, 5) and completes.
+    let page3 = client.scan_liquidation_candidates(&keeper, &page2.next_cursor, &2, &0);
+    assert!(page3.done);
+    assert_eq!(page3.next_cursor, 0);
+    assert_eq!(page3.registry_size, 4);
+}
+
+#[test]
 fn test_no_candidates_when_no_bonds_active() {
     let e = Env::default();
     let (client, admin) = setup(&e);
