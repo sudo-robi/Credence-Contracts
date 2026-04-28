@@ -5,10 +5,44 @@
 //! a configurable multiplier (basis points) and a protocol cap. When attester bond changes,
 //! new attestations use the new weight; existing attestations retain their stored weight.
 //!
+//! ## Rounding semantics (documented invariants)
+//!
+//! The weight formula is:
+//! ```text
+//! raw = floor(stake_u64 * multiplier_bps / BPS_DENOMINATOR)   // integer floor division
+//! weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
+//! ```
+//!
+//! Key invariants that are enforced and regression-tested:
+//!
+//! 1. **Floor division** — fractional results are always truncated toward zero.
+//!    e.g. `stake=9_999, mult=100` → `floor(99.99) = 99`, not 100.
+//!
+//! 2. **Lower bound** — weight is always `>= DEFAULT_ATTESTATION_WEIGHT` (1).
+//!    A raw result of 0 (e.g. tiny stake or zero multiplier) is clamped up to 1.
+//!
+//! 3. **Upper bound** — weight is always `<= MAX_ATTESTATION_WEIGHT`.
+//!    Both the config max and the protocol hard cap are enforced independently.
+//!
+//! 4. **Determinism** — identical `(stake, multiplier_bps, config_max)` inputs
+//!    always produce the same output; there is no randomness or ledger-time dependency.
+//!
+//! 5. **Monotonicity** — for a fixed config, increasing stake never decreases weight
+//!    (until the cap is reached).
+//!
+//! 6. **Immutability of stored weights** — once an attestation is written to storage,
+//!    its `weight` field is never mutated. Subsequent stake/config changes only affect
+//!    future attestations.
+//!
+//! 7. **Config clamping** — `set_weight_config` silently clamps `max_weight` to
+//!    `MAX_ATTESTATION_WEIGHT`; the stored value reflects the clamped result.
+//!
 //! ## Security
 //! - Maximum weight is capped by `MAX_ATTESTATION_WEIGHT` to limit influence.
 //! - Negative stake is rejected in `set_attester_stake`.
 //! - Weight config is admin-only (enforced by contract entrypoints).
+//! - `stake` is cast to `u64` via `unsigned_abs()` before the BPS multiplication to
+//!   avoid signed-integer overflow; the negative-stake guard above ensures this is safe.
 
 use soroban_sdk::Env;
 
