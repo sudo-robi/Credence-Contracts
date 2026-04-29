@@ -247,6 +247,11 @@ impl AdminContract {
         e.events()
             .publish((Symbol::new(&e, "admin_added"),), admin_info.clone());
 
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_ASSIGNED"), new_admin),
+            (role, caller),
+        );
+
         admin_info
     }
 
@@ -328,6 +333,11 @@ impl AdminContract {
 
         e.events()
             .publish((Symbol::new(&e, "admin_removed"),), admin_info);
+
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_REVOKED"), admin_to_remove),
+            (caller,),
+        );
     }
 
     /// Update an admin's role.
@@ -412,7 +422,12 @@ impl AdminContract {
 
         e.events().publish(
             (Symbol::new(&e, "admin_role_updated"),),
-            (admin_address, old_role, new_role),
+            (admin_address.clone(), old_role, new_role),
+        );
+
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_ASSIGNED"), admin_address),
+            (new_role, caller),
         );
 
         admin_info
@@ -460,6 +475,11 @@ impl AdminContract {
 
         e.events()
             .publish((Symbol::new(&e, "admin_deactivated"),), admin_info);
+
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_REVOKED"), admin_address),
+            (caller,),
+        );
     }
 
     /// Reactivate a previously deactivated admin.
@@ -503,7 +523,12 @@ impl AdminContract {
         );
 
         e.events()
-            .publish((Symbol::new(&e, "admin_reactivated"),), admin_info);
+            .publish((Symbol::new(&e, "admin_reactivated"),), admin_info.clone());
+
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_ASSIGNED"), admin_address),
+            (admin_info.role, caller),
+        );
     }
 
     /// Propose a new owner for the contract (two-step ownership transfer).
@@ -869,3 +894,6 @@ mod test_zero_address_working;
 
 #[cfg(test)]
 mod test_immutable_config_simple;
+
+#[cfg(test)]
+mod test_authorization;
