@@ -426,3 +426,134 @@ fn test_create_bond_sequential() {
     let stored_bond = client.get_identity_state();
     assert_eq!(stored_bond.bonded_amount, 5000);
 }
+
+// ── lifecycle edge-cases (issue #284) ────────────────────────────────────────
+
+/// is_bond_active returns false before any bond is created.
+#[test]
+fn test_is_bond_active_false_before_creation() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    assert!(!client.is_bond_active());
+}
+
+/// is_bond_active returns true immediately after creation.
+#[test]
+fn test_is_bond_active_true_after_creation() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &1_000_i128, &86_400_u64);
+    assert!(client.is_bond_active());
+}
+
+/// bond_start is recorded at the ledger timestamp of creation, not at a later time.
+#[test]
+fn test_create_bond_bond_start_not_affected_by_later_time() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 500_000);
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &1_000_i128, &86_400_u64);
+
+    // Advance time — bond_start must still reflect creation time
+    e.ledger().with_mut(|li| li.timestamp = 999_999);
+    let b = client.get_identity_state();
+    assert_eq!(
+        b.bond_start, 500_000,
+        "bond_start must be frozen at creation time"
+    );
+}
+
+/// slashed_amount is always zero on a freshly created bond.
+#[test]
+fn test_create_bond_slashed_amount_zero_on_creation() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    let bond = client.create_bond(&identity, &50_000_i128, &86_400_u64);
+    assert_eq!(bond.slashed_amount, 0);
+}
+
+/// withdrawal_requested_at is always zero on a freshly created bond.
+#[test]
+fn test_create_bond_withdrawal_requested_at_zero_on_creation() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    let bond = client.create_bond(&identity, &1_000_i128, &86_400_u64);
+    assert_eq!(bond.withdrawal_requested_at, 0);
+}
+
+/// Duration one second below MIN is rejected.
+#[test]
+#[should_panic(expected = "bond duration too short")]
+fn test_create_bond_one_below_min_duration_rejected() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &1_000_i128, &(validation::MIN_BOND_DURATION - 1));
+}
+
+/// Duration one second above MAX is rejected.
+#[test]
+#[should_panic(expected = "bond duration too long")]
+fn test_create_bond_one_above_max_duration_rejected() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &1_000_i128, &(validation::MAX_BOND_DURATION + 1));
+}
+
+/// Amount one below MIN is rejected.
+#[test]
+#[should_panic(expected = "bond amount below minimum required")]
+fn test_create_bond_one_below_min_amount_rejected() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &(validation::MIN_BOND_AMOUNT - 1), &86_400_u64);
+}
+
+/// Amount one above MAX is rejected.
+#[test]
+#[should_panic(expected = "bond amount exceeds maximum allowed")]
+fn test_create_bond_one_above_max_amount_rejected() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &(validation::MAX_BOND_AMOUNT + 1), &86_400_u64);
+}
+
+/// Total supply starts at zero and increments by the bonded amount on creation.
+#[test]
+fn test_create_bond_total_supply_increments_correctly() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    assert_eq!(client.get_total_supply(), 0);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &7_777_i128, &86_400_u64);
+    assert_eq!(client.get_total_supply(), 7_777);
+}
+
+/// Supply cap at exact bond amount is accepted (boundary = cap).
+#[test]
+fn test_create_bond_supply_cap_exact_boundary_accepted() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    client.set_supply_cap(&admin, &5_000_i128);
+    let identity = Address::generate(&e);
+    let bond = client.create_bond(&identity, &5_000_i128, &86_400_u64);
+    assert_eq!(bond.bonded_amount, 5_000);
+}
+
+/// Supply cap one below bond amount is rejected.
+#[test]
+#[should_panic(expected = "supply cap exceeded")]
+fn test_create_bond_supply_cap_one_below_rejected() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    client.set_supply_cap(&admin, &4_999_i128);
+    let identity = Address::generate(&e);
+    client.create_bond(&identity, &5_000_i128, &86_400_u64);
+}
