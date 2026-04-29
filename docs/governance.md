@@ -53,3 +53,17 @@ Slash requests require multi-signature (multi-sig) verification before execution
 - Double voting is rejected.
 - Non-governors and non-delegates cannot vote.
 - Governance is initialized once by admin; governors and quorum are then fixed for the contract instance.
+
+## Parameter Change Approval Invariants
+
+For bond parameter updates that use the explicit approval entrypoints (the `*_appr` methods), the contract enforces three invariants before mutation:
+
+- **Approver/actor binding**: `approval.approver` must equal the `admin` actor executing the change.
+- **Expiry**: if `approval.expires_at > 0`, execution must occur at or before the expiry timestamp.
+- **Category mapping**: `approval.category` must match the target parameter family:
+	- `fee`: protocol fee, attestation fee
+	- `cooldown`: withdrawal cooldown, slash cooldown
+	- `tier`: bronze/silver/gold/platinum thresholds
+	- `risk`: max leverage, borrow freeze
+
+These checks prevent stale approvals, actor substitution, and cross-category reuse of approvals.

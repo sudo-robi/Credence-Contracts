@@ -56,6 +56,18 @@ Managed via `access_control.rs`. All restricted paths emit `access_denied` on un
   3. Check `is_approved(proposal_id)` before attempting to call `execute_slash_if_approved` to save gas.
 - **Storage Keys**: Verifier roles are stored in instance storage as `(Symbol("verifier"), Address)`. Check this before routing verifier-only UI actions.
 
+## 4. Deterministic Ordering Guarantees (Pagination Contract)
+
+List-returning APIs in the bond domain expose deterministic ordering so off-chain pagination cannot duplicate or omit entries due to non-deterministic traversal.
+
+- `scan_liquidation_candidates(keeper, cursor, max_iter, min_slash_ratio_bps)`
+  - Uses a stable slot-indexed registry order.
+  - Deregistration marks identities inactive instead of compacting/removing slots.
+  - Cursor advancement is therefore stable across page boundaries, even when a holder is deregistered between pages.
+  - `registry_size` reports active holders; cursor math is based on stable slot count.
+
+Operational note for indexers: treat `(cursor, next_cursor, done)` as the source of truth for page traversal and do not infer page progression from `registry_size` alone.
+
 ## Function Reference
 
 ### `create_bond_with_rolling(caller, amount, duration)`

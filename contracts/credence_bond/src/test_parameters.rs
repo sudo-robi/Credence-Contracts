@@ -878,3 +878,70 @@ fn test_no_duplicate_events_on_parameter_update() {
         "expected exactly 1 event per setter"
     );
 }
+
+// ============================================================================
+// Category 11: Governance Approval Invariants (issue #278)
+// ============================================================================
+
+#[test]
+#[should_panic(expected = "governance approver mismatch")]
+fn test_parameter_approval_rejects_mismatched_approver() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let other = Address::generate(&e);
+
+    let approval = GovernanceApproval {
+        approver: other,
+        expires_at: 0,
+        category: symbol_short!("fee"),
+    };
+
+    client.set_protocol_fee_bps_appr(&admin, &100, &approval);
+}
+
+#[test]
+#[should_panic(expected = "governance approval expired")]
+fn test_parameter_approval_rejects_expired_approval() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    e.ledger().with_mut(|li| li.timestamp = 10_000);
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 9_999,
+        category: symbol_short!("risk"),
+    };
+
+    client.set_max_leverage_appr(&admin, &200_000, &approval);
+}
+
+#[test]
+#[should_panic(expected = "governance approval category mismatch")]
+fn test_parameter_approval_rejects_wrong_category() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("tier"),
+    };
+
+    client.set_withdrawal_cd_secs_appr(&admin, &3600, &approval);
+}
+
+#[test]
+fn test_parameter_approval_accepts_valid_actor_expiry_and_category() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    e.ledger().with_mut(|li| li.timestamp = 1_000);
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 1_100,
+        category: symbol_short!("cooldown"),
+    };
+
+    client.set_slash_cd_secs_appr(&admin, &12_345, &approval);
+    assert_eq!(client.get_slash_cooldown_secs(), 12_345);
+}
