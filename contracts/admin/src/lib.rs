@@ -5,9 +5,9 @@ pub mod pausable;
 #[cfg(test)]
 mod test_ownership_transfer;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
 /// Admin role hierarchy levels
 #[contracttype]
@@ -313,7 +313,11 @@ impl AdminContract {
             .unwrap_or(Vec::new(&e));
         let admin_index = admin_list.iter().position(|x| x == admin_to_remove);
         if let Some(index) = admin_index {
-            admin_list.remove(index.try_into().unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)));
+            admin_list.remove(
+                index
+                    .try_into()
+                    .unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)),
+            );
             e.storage().instance().set(&DataKey::AdminList, &admin_list);
         }
 
@@ -325,7 +329,11 @@ impl AdminContract {
             .unwrap_or(Vec::new(&e));
         let role_index = role_admins.iter().position(|x| x == admin_to_remove);
         if let Some(index) = role_index {
-            role_admins.remove(index.try_into().unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)));
+            role_admins.remove(
+                index
+                    .try_into()
+                    .unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)),
+            );
             e.storage()
                 .instance()
                 .set(&DataKey::RoleAdmins(admin_info.role), &role_admins);
@@ -392,7 +400,11 @@ impl AdminContract {
             .unwrap_or(Vec::new(&e));
         let old_index = old_role_admins.iter().position(|x| x == admin_address);
         if let Some(index) = old_index {
-            old_role_admins.remove(index.try_into().unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)));
+            old_role_admins.remove(
+                index
+                    .try_into()
+                    .unwrap_or_else(|_| panic_with_error!(&e, ContractError::Overflow)),
+            );
             e.storage()
                 .instance()
                 .set(&DataKey::RoleAdmins(old_role), &old_role_admins);
@@ -476,10 +488,8 @@ impl AdminContract {
         e.events()
             .publish((Symbol::new(&e, "admin_deactivated"),), admin_info);
 
-        e.events().publish(
-            (Symbol::new(&e, "ROLE_REVOKED"), admin_address),
-            (caller,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "ROLE_REVOKED"), admin_address), (caller,));
     }
 
     /// Reactivate a previously deactivated admin.

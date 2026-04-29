@@ -20,10 +20,20 @@ fn test_super_admin_can_add_admin() {
     let new_admin = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), new_admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            new_admin.clone(),
+            AdminRole::Admin,
+        );
     });
 
-    assert!(env.as_contract(&contract_address, || AdminContract::is_admin(env.clone(), new_admin)));
+    assert!(
+        env.as_contract(&contract_address, || AdminContract::is_admin(
+            env.clone(),
+            new_admin
+        ))
+    );
 }
 
 #[test]
@@ -34,12 +44,22 @@ fn test_admin_cannot_add_another_admin() {
     let other_admin = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            AdminRole::Admin,
+        );
     });
 
     // Admin tries to add another Admin
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), admin.clone(), other_admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            admin.clone(),
+            other_admin.clone(),
+            AdminRole::Admin,
+        );
     });
 }
 
@@ -50,14 +70,29 @@ fn test_admin_can_add_operator() {
     let operator = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            AdminRole::Admin,
+        );
     });
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), admin.clone(), operator.clone(), AdminRole::Operator);
+        AdminContract::add_admin(
+            env.clone(),
+            admin.clone(),
+            operator.clone(),
+            AdminRole::Operator,
+        );
     });
 
-    assert!(env.as_contract(&contract_address, || AdminContract::is_admin(env.clone(), operator)));
+    assert!(
+        env.as_contract(&contract_address, || AdminContract::is_admin(
+            env.clone(),
+            operator
+        ))
+    );
 }
 
 #[test]
@@ -68,12 +103,22 @@ fn test_operator_cannot_add_anyone() {
     let target = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), operator.clone(), AdminRole::Operator);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            operator.clone(),
+            AdminRole::Operator,
+        );
     });
 
     // Operator tries to add another Operator
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), operator.clone(), target.clone(), AdminRole::Operator);
+        AdminContract::add_admin(
+            env.clone(),
+            operator.clone(),
+            target.clone(),
+            AdminRole::Operator,
+        );
     });
 }
 
@@ -83,14 +128,24 @@ fn test_super_admin_can_remove_admin() {
     let admin = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            AdminRole::Admin,
+        );
     });
 
     env.as_contract(&contract_address, || {
         AdminContract::remove_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    assert!(!env.as_contract(&contract_address, || AdminContract::is_admin(env.clone(), admin)));
+    assert!(
+        !env.as_contract(&contract_address, || AdminContract::is_admin(
+            env.clone(),
+            admin
+        ))
+    );
 }
 
 #[test]
@@ -101,10 +156,20 @@ fn test_admin_cannot_remove_another_admin() {
     let admin2 = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin1.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin1.clone(),
+            AdminRole::Admin,
+        );
     });
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin2.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin2.clone(),
+            AdminRole::Admin,
+        );
     });
 
     // Admin1 tries to remove Admin2 (same level)
@@ -120,17 +185,32 @@ fn test_admin_can_remove_operator() {
     let operator = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            AdminRole::Admin,
+        );
     });
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), operator.clone(), AdminRole::Operator);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            operator.clone(),
+            AdminRole::Operator,
+        );
     });
 
     env.as_contract(&contract_address, || {
         AdminContract::remove_admin(env.clone(), admin.clone(), operator.clone());
     });
 
-    assert!(!env.as_contract(&contract_address, || AdminContract::is_admin(env.clone(), operator)));
+    assert!(
+        !env.as_contract(&contract_address, || AdminContract::is_admin(
+            env.clone(),
+            operator
+        ))
+    );
 }
 
 #[test]
@@ -139,10 +219,15 @@ fn test_events_emitted_on_role_assignment() {
     let new_admin = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        AdminContract::add_admin(env.clone(), super_admin.clone(), new_admin.clone(), AdminRole::Admin);
+        AdminContract::add_admin(
+            env.clone(),
+            super_admin.clone(),
+            new_admin.clone(),
+            AdminRole::Admin,
+        );
     });
 
-    // We can't easily check events in Soroban tests without complex setup, 
+    // We can't easily check events in Soroban tests without complex setup,
     // but the presence of the code in lib.rs ensures emission.
     // The test passing proves no panic occurred during emission.
 }
