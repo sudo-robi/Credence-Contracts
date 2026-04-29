@@ -300,6 +300,64 @@ impl CredenceRegistry {
             .publish((Symbol::new(&e, "identity_deactivated"),), entry);
     }
 
+    /// Remove a registration permanently (hard delete).
+    ///
+    /// Clears both the forward mapping (identity → bond) and the reverse mapping
+    /// (bond → identity) from storage, and removes the identity from the
+    /// `RegisteredIdentities` list.  After removal the identity and bond contract
+    /// are free to be re-registered with new counterparts.
+    ///
+    /// # Arguments
+    /// * `identity` - The identity address to remove
+    ///
+    /// # Panics
+    /// * `ContractError::NotInitialized`  – contract not yet initialised
+    /// * `ContractError::IdentityNotRegistered` – identity has no entry
+    ///
+    /// # Events
+    /// Emits `identity_removed` with the removed `RegistryEntry`
+    pub fn remove(e: Env, identity: Address) {
+        pausable::require_not_paused(&e);
+
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+
+        admin.require_auth();
+
+        let identity_key = DataKey::IdentityToBond(identity.clone());
+        let entry: RegistryEntry = e
+            .storage()
+            .instance()
+            .get(&identity_key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::IdentityNotRegistered));
+
+        // Remove forward mapping
+        e.storage().instance().remove(&identity_key);
+
+        // Remove reverse mapping so the bond contract can be re-registered
+        let bond_key = DataKey::BondToIdentity(entry.bond_contract.clone());
+        e.storage().instance().remove(&bond_key);
+
+        // Remove from the identities list
+        let mut identities: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::RegisteredIdentities)
+            .unwrap_or_else(|| Vec::new(&e));
+        if let Some(pos) = identities.iter().position(|a| a == identity) {
+            identities.remove(pos as u32);
+            e.storage()
+                .instance()
+                .set(&DataKey::RegisteredIdentities, &identities);
+        }
+
+        e.events()
+            .publish((Symbol::new(&e, "identity_removed"),), entry);
+    }
+
     /// Reactivate a previously deactivated registration.
     ///
     /// # Arguments
@@ -468,3 +526,6 @@ mod test_pausable;
 
 #[cfg(test)]
 mod test_interface;
+
+#[cfg(test)]
+mod test_uniqueness;
