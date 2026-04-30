@@ -19,6 +19,26 @@ The Credence Bond contract implements role-based access control with the followi
 | **Governance** | Governance participants for protocol decisions | Limited |
 | **Identity Owner** | Owner of a specific bond/identity | Owner-specific |
 
+### Admin Contract Roles (System-wide)
+
+The `Admin` contract manages the system-wide role hierarchy and administrative operations:
+
+| Role | Hierarchy Level | Description |
+|------|-----------------|-------------|
+| **SuperAdmin** | 3 | Highest privilege; can manage all roles and transfer ownership. |
+| **Admin** | 2 | Administrative privilege; can manage Operators. |
+| **Operator** | 1 | Operational privilege; limited task execution. |
+
+#### Role Mutation Permissions
+
+| Target Role | Min Role Required to Assign | Min Role Required to Revoke |
+|-------------|-----------------------------|----------------------------|
+| **SuperAdmin** | SuperAdmin | SuperAdmin (strictly higher role required*) |
+| **Admin** | SuperAdmin | SuperAdmin |
+| **Operator** | Admin | Admin |
+
+*\*Note: Role revocation requires a caller with a strictly higher hierarchy level than the target. SuperAdmins cannot revoke other SuperAdmins.*
+
 ### Permission Matrix
 
 | Function/Method | Admin | Verifier | Governance | Identity Owner | Notes |
